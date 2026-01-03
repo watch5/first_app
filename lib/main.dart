@@ -20,7 +20,6 @@ class MyApp extends StatelessWidget {
   }
 }
 
-// 画面の状態（どのタブを選んでいるか）を管理するために StatefulWidget を使います
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
 
@@ -29,16 +28,25 @@ class MainScreen extends StatefulWidget {
 }
 
 class _MainScreenState extends State<MainScreen> {
-  // 今選んでいるタブの番号（0: 明細, 1: 資産）
   int _selectedIndex = 0;
 
-  // 表示する画面のリスト
-  final List<Widget> _screens = [
-    const TransactionListPage(), // 0番目: 明細リスト
-    const BalanceSheetPage(),    // 1番目: 資産（B/S）
+  // ★重要：データリストをここで管理します（最初はダミーデータ）
+  List<Map<String, dynamic>> _transactions = [
+    {'title': 'スーパーで買い物', 'amount': 3500, 'date': '2026/01/03'},
+    {'title': '給与振込', 'amount': -250000, 'date': '2025/12/25'},
   ];
 
-  // タブがタップされた時の処理
+  // 新しい取引を追加するメソッド
+  void _addTransaction(String title, int amount) {
+    setState(() {
+      _transactions.insert(0, { // リストの先頭(0番目)に追加
+        'title': title,
+        'amount': amount,
+        'date': '2026/01/04', // 日付は一旦固定で今日にしておきます
+      });
+    });
+  }
+
   void _onItemTapped(int index) {
     setState(() {
       _selectedIndex = index;
@@ -47,27 +55,39 @@ class _MainScreenState extends State<MainScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // 画面のリスト（データを渡すためにここで作ります）
+    final List<Widget> _screens = [
+      TransactionListPage(transactions: _transactions), // データを渡す！
+      const BalanceSheetPage(),
+    ];
+
     return Scaffold(
-      body: _screens[_selectedIndex], // 選ばれた画面を表示
+      body: _screens[_selectedIndex],
       bottomNavigationBar: BottomNavigationBar(
-        items: const <BottomNavigationBarItem>[
-          BottomNavigationBarItem(
-            icon: Icon(Icons.list_alt),
-            label: '明細',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.account_balance_wallet), // お財布のアイコン
-            label: '資産(B/S)',
-          ),
+        items: const [
+          BottomNavigationBarItem(icon: Icon(Icons.list_alt), label: '明細'),
+          BottomNavigationBarItem(icon: Icon(Icons.account_balance), label: '資産(B/S)'),
         ],
         currentIndex: _selectedIndex,
         selectedItemColor: Colors.teal,
         onTap: _onItemTapped,
       ),
-      // 入力ボタンは「明細」タブの時だけ表示する小技
       floatingActionButton: _selectedIndex == 0
           ? FloatingActionButton(
-              onPressed: () {},
+              onPressed: () async {
+                // ★ここが魔法のポイント
+                // 入力画面へ行き、帰ってくるのを「待つ(await)」
+                final newTransaction = await Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => const AddTransactionPage(),
+                  ),
+                );
+
+                // もしデータを持って帰ってきたら、リストに追加する
+                if (newTransaction != null) {
+                  _addTransaction(newTransaction['title'], newTransaction['amount']);
+                }
+              },
               child: const Icon(Icons.add),
             )
           : null,
@@ -75,22 +95,19 @@ class _MainScreenState extends State<MainScreen> {
   }
 }
 
-// --- 以下、各画面の中身 ---
-
-// 1. 明細リスト画面（さっき作ったやつです）
+// --- 1. 明細リスト画面 ---
 class TransactionListPage extends StatelessWidget {
-  const TransactionListPage({super.key});
+  // 親からデータをもらうための受け口
+  final List<Map<String, dynamic>> transactions;
+
+  const TransactionListPage({super.key, required this.transactions});
 
   @override
   Widget build(BuildContext context) {
-    // ダミーデータ
-    final List<Map<String, dynamic>> dummyTransactions = [
-      {'title': 'スーパーで買い物', 'amount': 3500, 'date': '2026/01/03'},
-      {'title': 'カフェラテ', 'amount': 550, 'date': '2026/01/03'},
-      {'title': '書籍購入（技術書）', 'amount': 2800, 'date': '2026/01/02'},
-      {'title': '給与振込', 'amount': -250000, 'date': '2025/12/25'},
-      {'title': 'コンビニ', 'amount': 800, 'date': '2025/12/24'},
-    ];
+    // データが空っぽの時の表示
+    if (transactions.isEmpty) {
+      return const Center(child: Text('データがありません'));
+    }
 
     return Scaffold(
       appBar: AppBar(
@@ -98,9 +115,9 @@ class TransactionListPage extends StatelessWidget {
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
       ),
       body: ListView.builder(
-        itemCount: dummyTransactions.length,
+        itemCount: transactions.length,
         itemBuilder: (context, index) {
-          final transaction = dummyTransactions[index];
+          final transaction = transactions[index];
           return Card(
             margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
             child: ListTile(
@@ -119,7 +136,7 @@ class TransactionListPage extends StatelessWidget {
   }
 }
 
-// 2. 資産（B/S）画面（新登場！）
+// --- 2. 資産（B/S）画面 ---
 class BalanceSheetPage extends StatelessWidget {
   const BalanceSheetPage({super.key});
 
@@ -130,19 +147,56 @@ class BalanceSheetPage extends StatelessWidget {
         title: const Text('貸借対照表 (B/S)'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
       ),
-      body: Center(
+      body: const Center(child: Text('資産画面はこれから！')),
+    );
+  }
+}
+
+// --- 3. 入力画面 ---
+class AddTransactionPage extends StatefulWidget {
+  const AddTransactionPage({super.key});
+
+  @override
+  State<AddTransactionPage> createState() => _AddTransactionPageState();
+}
+
+class _AddTransactionPageState extends State<AddTransactionPage> {
+  // 入力された文字を捕まえる「網（コントローラー）」
+  final _titleController = TextEditingController();
+  final _amountController = TextEditingController();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('入力')),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: const [
-            Icon(Icons.account_balance, size: 100, color: Colors.grey),
-            SizedBox(height: 20),
-            Text(
-              'ここに資産バランスが表示されます',
-              style: TextStyle(fontSize: 18, color: Colors.grey),
+          children: [
+            TextField(
+              controller: _titleController, // 網をセット
+              decoration: const InputDecoration(labelText: '品目（例：タクシー）'),
             ),
-            Text(
-              '（現金、銀行口座、クレカ負債など）',
-              style: TextStyle(fontSize: 14, color: Colors.grey),
+            const SizedBox(height: 20),
+            TextField(
+              controller: _amountController, // 網をセット
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(labelText: '金額（円）'),
+            ),
+            const SizedBox(height: 30),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () {
+                  // 保存ボタンが押されたら
+                  final title = _titleController.text;
+                  final amount = int.tryParse(_amountController.text) ?? 0;
+
+                  // データをまとめて、元の画面に「返す(pop)」
+                  Navigator.of(context).pop({'title': title, 'amount': amount});
+                },
+                child: const Text('リストに追加'),
+              ),
             ),
           ],
         ),
