@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'database.dart'; // さっき作ったデータベースを読み込む
 
 void main() {
   runApp(const MyApp());
@@ -29,28 +30,41 @@ class MainScreen extends StatefulWidget {
 
 class _MainScreenState extends State<MainScreen> {
   int _selectedIndex = 0;
+  
+  // ★ データベースのインスタンスを作成
+  final MyDatabase _db = MyDatabase();
+  
+  // データリスト（型が 'Transaction' に変わりました！）
+  List<Transaction> _transactions = [];
 
-  // データリスト（ここがアプリの記憶領域）
-  final List<Map<String, dynamic>> _transactions = [
-    {'title': 'スーパーで買い物', 'amount': 3500, 'date': '2026/01/03'},
-    {'title': '給与振込', 'amount': -250000, 'date': '2025/12/25'},
-  ];
+  @override
+  void initState() {
+    super.initState();
+    // アプリ起動時にデータを読み込む
+    _loadData();
+  }
 
-  // 画面リストを作る「ゲッター（getter）」
-  // これを "get" にすることで、毎回最新の _transactions を画面に渡せます
-  List<Widget> get _screens => [
-    TransactionListPage(transactions: _transactions), // 0: 明細
-    BalanceSheetPage(transactions: _transactions),    // 1: 資産(B/S)
-  ];
-
-  void _addTransaction(String title, int amount) {
+  // データベースから全データを取ってくる処理
+  Future<void> _loadData() async {
+    final list = await _db.getAllTransactions();
     setState(() {
-      _transactions.insert(0, {
-        'title': title,
-        'amount': amount,
-        'date': '2026/01/04',
-      });
+      // 日付の新しい順（降順）に並べ替えてセット
+      _transactions = list.reversed.toList();
     });
+  }
+
+  // データを追加する処理
+  Future<void> _addTransaction(String title, int amount) async {
+    // データベースに保存
+    await _db.addTransaction(title, amount, DateTime.now());
+    // 画面を更新（再読み込み）
+    await _loadData();
+  }
+
+  // データを削除する処理（長押しで消せるようにしました）
+  Future<void> _deleteTransaction(int id) async {
+    await _db.deleteTransaction(id);
+    await _loadData();
   }
 
   void _onItemTapped(int index) {
@@ -61,9 +75,17 @@ class _MainScreenState extends State<MainScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // 画面リスト
+    final List<Widget> screens = [
+      TransactionListPage(
+        transactions: _transactions,
+        onDelete: _deleteTransaction, // 削除機能も渡す
+      ),
+      BalanceSheetPage(transactions: _transactions),
+    ];
+
     return Scaffold(
-      // ここで _screens を使います
-      body: _screens[_selectedIndex], 
+      body: screens[_selectedIndex],
       bottomNavigationBar: BottomNavigationBar(
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.list_alt), label: '明細'),
@@ -76,15 +98,14 @@ class _MainScreenState extends State<MainScreen> {
       floatingActionButton: _selectedIndex == 0
           ? FloatingActionButton(
               onPressed: () async {
-                // 入力画面へ移動
                 final newTransaction = await Navigator.of(context).push(
                   MaterialPageRoute(
                     builder: (context) => const AddTransactionPage(),
                   ),
                 );
-                // データが帰ってきたら追加
                 if (newTransaction != null) {
-                  _addTransaction(newTransaction['title'], newTransaction['amount']);
+                  // データベースに追加
+                  await _addTransaction(newTransaction['title'], newTransaction['amount']);
                 }
               },
               child: const Icon(Icons.add),
@@ -96,9 +117,14 @@ class _MainScreenState extends State<MainScreen> {
 
 // --- 1. 明細リスト画面 ---
 class TransactionListPage extends StatelessWidget {
-  final List<Map<String, dynamic>> transactions;
+  final List<Transaction> transactions; // 型変更
+  final Function(int) onDelete; // 削除用の関数
 
-  const TransactionListPage({super.key, required this.transactions});
+  const TransactionListPage({
+    super.key,
+    required this.transactions,
+    required this.onDelete,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -118,12 +144,37 @@ class TransactionListPage extends StatelessWidget {
             margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
             child: ListTile(
               leading: const Icon(Icons.shopping_bag_outlined),
-              title: Text(transaction['title']),
-              subtitle: Text(transaction['date']),
+              // ★ データベースのデータは ['title'] ではなく .title でアクセスします
+              title: Text(transaction.title),
+              subtitle: Text(
+                '${transaction.date.year}/${transaction.date.month}/${transaction.date.day}',
+              ),
               trailing: Text(
-                '¥${transaction['amount']}',
+                '¥${transaction.amount}',
                 style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
               ),
+              // 長押しで削除
+              onLongPress: () {
+                showDialog(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    title: const Text('削除しますか？'),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.of(ctx).pop(),
+                        child: const Text('キャンセル'),
+                      ),
+                      TextButton(
+                        onPressed: () {
+                          onDelete(transaction.id); // 削除実行
+                          Navigator.of(ctx).pop();
+                        },
+                        child: const Text('削除', style: TextStyle(color: Colors.red)),
+                      ),
+                    ],
+                  ),
+                );
+              },
             ),
           );
         },
@@ -134,31 +185,19 @@ class TransactionListPage extends StatelessWidget {
 
 // --- 2. 資産（B/S）画面 ---
 class BalanceSheetPage extends StatelessWidget {
-  final List<Map<String, dynamic>> transactions;
+  final List<Transaction> transactions; // 型変更
 
   const BalanceSheetPage({super.key, required this.transactions});
 
   @override
   Widget build(BuildContext context) {
-    // 資産計算ロジック
-    int currentAsset = 100000; // 初期貯金 10万円スタートと仮定
+    int currentAsset = 100000; // 初期設定
 
     for (var transaction in transactions) {
-      // 簡易ロジック：金額をそのまま足し引きします
-      // （※本来は借方・貸方のロジックが入りますが、まずは合計の動きを見ます）
-      
-      // 今回のデータ構造では、支出が「プラスの数字」で入っているので引きます
-      // 収入（給与）は「マイナスの数字」で入っているので、本来は足すべきですが
-      // サンプルデータに合わせて調整します。
-      
-      // ここではシンプルに：
-      // 「給与」なら足す、「それ以外」なら引く、という動きにしてみましょう
-      if (transaction['title'].contains('給与')) {
-        // 給与は増える（データがマイナス表記の場合は絶対値を足す）
-        currentAsset += (transaction['amount'] as int).abs();
+      if (transaction.title.contains('給与')) {
+        currentAsset += transaction.amount.abs();
       } else {
-        // 買い物は減る
-        currentAsset -= (transaction['amount'] as int);
+        currentAsset -= transaction.amount;
       }
     }
 
@@ -197,7 +236,7 @@ class BalanceSheetPage extends StatelessWidget {
   }
 }
 
-// --- 3. 入力画面 ---
+// --- 3. 入力画面（ここは変更なし） ---
 class AddTransactionPage extends StatefulWidget {
   const AddTransactionPage({super.key});
 
