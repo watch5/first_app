@@ -39,8 +39,19 @@ class $AccountsTable extends Accounts with TableInfo<$AccountsTable, Account> {
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _monthlyBudgetMeta = const VerificationMeta(
+    'monthlyBudget',
+  );
   @override
-  List<GeneratedColumn> get $columns => [id, name, type];
+  late final GeneratedColumn<int> monthlyBudget = GeneratedColumn<int>(
+    'monthly_budget',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, name, type, monthlyBudget];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -72,6 +83,15 @@ class $AccountsTable extends Accounts with TableInfo<$AccountsTable, Account> {
     } else if (isInserting) {
       context.missing(_typeMeta);
     }
+    if (data.containsKey('monthly_budget')) {
+      context.handle(
+        _monthlyBudgetMeta,
+        monthlyBudget.isAcceptableOrUnknown(
+          data['monthly_budget']!,
+          _monthlyBudgetMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -93,6 +113,10 @@ class $AccountsTable extends Accounts with TableInfo<$AccountsTable, Account> {
         DriftSqlType.string,
         data['${effectivePrefix}type'],
       )!,
+      monthlyBudget: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}monthly_budget'],
+      ),
     );
   }
 
@@ -106,13 +130,22 @@ class Account extends DataClass implements Insertable<Account> {
   final int id;
   final String name;
   final String type;
-  const Account({required this.id, required this.name, required this.type});
+  final int? monthlyBudget;
+  const Account({
+    required this.id,
+    required this.name,
+    required this.type,
+    this.monthlyBudget,
+  });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['id'] = Variable<int>(id);
     map['name'] = Variable<String>(name);
     map['type'] = Variable<String>(type);
+    if (!nullToAbsent || monthlyBudget != null) {
+      map['monthly_budget'] = Variable<int>(monthlyBudget);
+    }
     return map;
   }
 
@@ -121,6 +154,9 @@ class Account extends DataClass implements Insertable<Account> {
       id: Value(id),
       name: Value(name),
       type: Value(type),
+      monthlyBudget: monthlyBudget == null && nullToAbsent
+          ? const Value.absent()
+          : Value(monthlyBudget),
     );
   }
 
@@ -133,6 +169,7 @@ class Account extends DataClass implements Insertable<Account> {
       id: serializer.fromJson<int>(json['id']),
       name: serializer.fromJson<String>(json['name']),
       type: serializer.fromJson<String>(json['type']),
+      monthlyBudget: serializer.fromJson<int?>(json['monthlyBudget']),
     );
   }
   @override
@@ -142,19 +179,31 @@ class Account extends DataClass implements Insertable<Account> {
       'id': serializer.toJson<int>(id),
       'name': serializer.toJson<String>(name),
       'type': serializer.toJson<String>(type),
+      'monthlyBudget': serializer.toJson<int?>(monthlyBudget),
     };
   }
 
-  Account copyWith({int? id, String? name, String? type}) => Account(
+  Account copyWith({
+    int? id,
+    String? name,
+    String? type,
+    Value<int?> monthlyBudget = const Value.absent(),
+  }) => Account(
     id: id ?? this.id,
     name: name ?? this.name,
     type: type ?? this.type,
+    monthlyBudget: monthlyBudget.present
+        ? monthlyBudget.value
+        : this.monthlyBudget,
   );
   Account copyWithCompanion(AccountsCompanion data) {
     return Account(
       id: data.id.present ? data.id.value : this.id,
       name: data.name.present ? data.name.value : this.name,
       type: data.type.present ? data.type.value : this.type,
+      monthlyBudget: data.monthlyBudget.present
+          ? data.monthlyBudget.value
+          : this.monthlyBudget,
     );
   }
 
@@ -163,46 +212,53 @@ class Account extends DataClass implements Insertable<Account> {
     return (StringBuffer('Account(')
           ..write('id: $id, ')
           ..write('name: $name, ')
-          ..write('type: $type')
+          ..write('type: $type, ')
+          ..write('monthlyBudget: $monthlyBudget')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, name, type);
+  int get hashCode => Object.hash(id, name, type, monthlyBudget);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is Account &&
           other.id == this.id &&
           other.name == this.name &&
-          other.type == this.type);
+          other.type == this.type &&
+          other.monthlyBudget == this.monthlyBudget);
 }
 
 class AccountsCompanion extends UpdateCompanion<Account> {
   final Value<int> id;
   final Value<String> name;
   final Value<String> type;
+  final Value<int?> monthlyBudget;
   const AccountsCompanion({
     this.id = const Value.absent(),
     this.name = const Value.absent(),
     this.type = const Value.absent(),
+    this.monthlyBudget = const Value.absent(),
   });
   AccountsCompanion.insert({
     this.id = const Value.absent(),
     required String name,
     required String type,
+    this.monthlyBudget = const Value.absent(),
   }) : name = Value(name),
        type = Value(type);
   static Insertable<Account> custom({
     Expression<int>? id,
     Expression<String>? name,
     Expression<String>? type,
+    Expression<int>? monthlyBudget,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (name != null) 'name': name,
       if (type != null) 'type': type,
+      if (monthlyBudget != null) 'monthly_budget': monthlyBudget,
     });
   }
 
@@ -210,11 +266,13 @@ class AccountsCompanion extends UpdateCompanion<Account> {
     Value<int>? id,
     Value<String>? name,
     Value<String>? type,
+    Value<int?>? monthlyBudget,
   }) {
     return AccountsCompanion(
       id: id ?? this.id,
       name: name ?? this.name,
       type: type ?? this.type,
+      monthlyBudget: monthlyBudget ?? this.monthlyBudget,
     );
   }
 
@@ -230,6 +288,9 @@ class AccountsCompanion extends UpdateCompanion<Account> {
     if (type.present) {
       map['type'] = Variable<String>(type.value);
     }
+    if (monthlyBudget.present) {
+      map['monthly_budget'] = Variable<int>(monthlyBudget.value);
+    }
     return map;
   }
 
@@ -238,7 +299,8 @@ class AccountsCompanion extends UpdateCompanion<Account> {
     return (StringBuffer('AccountsCompanion(')
           ..write('id: $id, ')
           ..write('name: $name, ')
-          ..write('type: $type')
+          ..write('type: $type, ')
+          ..write('monthlyBudget: $monthlyBudget')
           ..write(')'))
         .toString();
   }
@@ -626,12 +688,14 @@ typedef $$AccountsTableCreateCompanionBuilder =
       Value<int> id,
       required String name,
       required String type,
+      Value<int?> monthlyBudget,
     });
 typedef $$AccountsTableUpdateCompanionBuilder =
     AccountsCompanion Function({
       Value<int> id,
       Value<String> name,
       Value<String> type,
+      Value<int?> monthlyBudget,
     });
 
 class $$AccountsTableFilterComposer
@@ -655,6 +719,11 @@ class $$AccountsTableFilterComposer
 
   ColumnFilters<String> get type => $composableBuilder(
     column: $table.type,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get monthlyBudget => $composableBuilder(
+    column: $table.monthlyBudget,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -682,6 +751,11 @@ class $$AccountsTableOrderingComposer
     column: $table.type,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<int> get monthlyBudget => $composableBuilder(
+    column: $table.monthlyBudget,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$AccountsTableAnnotationComposer
@@ -701,6 +775,11 @@ class $$AccountsTableAnnotationComposer
 
   GeneratedColumn<String> get type =>
       $composableBuilder(column: $table.type, builder: (column) => column);
+
+  GeneratedColumn<int> get monthlyBudget => $composableBuilder(
+    column: $table.monthlyBudget,
+    builder: (column) => column,
+  );
 }
 
 class $$AccountsTableTableManager
@@ -734,13 +813,25 @@ class $$AccountsTableTableManager
                 Value<int> id = const Value.absent(),
                 Value<String> name = const Value.absent(),
                 Value<String> type = const Value.absent(),
-              }) => AccountsCompanion(id: id, name: name, type: type),
+                Value<int?> monthlyBudget = const Value.absent(),
+              }) => AccountsCompanion(
+                id: id,
+                name: name,
+                type: type,
+                monthlyBudget: monthlyBudget,
+              ),
           createCompanionCallback:
               ({
                 Value<int> id = const Value.absent(),
                 required String name,
                 required String type,
-              }) => AccountsCompanion.insert(id: id, name: name, type: type),
+                Value<int?> monthlyBudget = const Value.absent(),
+              }) => AccountsCompanion.insert(
+                id: id,
+                name: name,
+                type: type,
+                monthlyBudget: monthlyBudget,
+              ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
               .toList(),
