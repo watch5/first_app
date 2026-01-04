@@ -1,56 +1,82 @@
+import 'dart:io';
+
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
-import 'dart:io';
 
 part 'database.g.dart';
 
 // --- 1. 勘定科目テーブル ---
 class Accounts extends Table {
   IntColumn get id => integer().autoIncrement()();
-  TextColumn get name => text()(); // 科目名
-  TextColumn get type => text()(); // asset, liability, expense, income
-  // ★追加: 月予算 (null許容)
+  TextColumn get name => text()();
+  TextColumn get type => text()(); // 'asset', 'liability', 'income', 'expense'
+  // バージョン2で追加
   IntColumn get monthlyBudget => integer().nullable()();
 }
 
-// --- 2. 取引テーブル ---
+// --- 2. 取引明細テーブル ---
 class Transactions extends Table {
   IntColumn get id => integer().autoIncrement()();
-  IntColumn get debitAccountId => integer().references(Accounts, #id)();
-  IntColumn get creditAccountId => integer().references(Accounts, #id)();
+  IntColumn get debitAccountId => integer()();
+  IntColumn get creditAccountId => integer()();
   IntColumn get amount => integer()();
   DateTimeColumn get date => dateTime()();
 }
 
-// --- 3. データベース本体 ---
-@DriftDatabase(tables: [Accounts, Transactions])
+// --- ★3. テンプレートテーブル (New!) ---
+class Templates extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get name => text()(); // テンプレート名
+  IntColumn get debitAccountId => integer()();
+  IntColumn get creditAccountId => integer()();
+  IntColumn get amount => integer()();
+}
+
+// --- データベース本体 ---
+// ★ここに Templates を追加するのを忘れずに！
+@DriftDatabase(tables: [Accounts, Transactions, Templates]) 
 class MyDatabase extends _$MyDatabase {
   MyDatabase() : super(_openConnection());
 
+  // ★バージョンを3にする
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
-  // ★マイグレーション処理 (バージョンアップ時のルール)
   @override
   MigrationStrategy get migration => MigrationStrategy(
     onCreate: (Migrator m) => m.createAll(),
     onUpgrade: (Migrator m, int from, int to) async {
       if (from < 2) {
-        // バージョン1→2の時、monthly_budget列を追加する
         await m.addColumn(accounts, accounts.monthlyBudget);
+      }
+      if (from < 3) {
+        // ★バージョン3でTemplatesテーブルを作成
+        await m.createTable(templates);
       }
     },
   );
 
-  // 全ての取引を取得
-  Future<List<Transaction>> getTransactions() => select(transactions).get();
+  // --- クエリ ---
 
-  // 全ての科目を取得
+  // Accounts
   Future<List<Account>> getAllAccounts() => select(accounts).get();
+  Future<int> addAccount(String name, String type, int? budget) {
+    return into(accounts).insert(AccountsCompanion(
+      name: Value(name),
+      type: Value(type),
+      monthlyBudget: Value(budget),
+    ));
+  }
+  Future<void> updateAccountBudget(int id, int budget) {
+    return (update(accounts)..where((a) => a.id.equals(id))).write(
+      AccountsCompanion(monthlyBudget: Value(budget)),
+    );
+  }
 
-  // 取引を追加
+  // Transactions
+  Future<List<Transaction>> getTransactions() => select(transactions).get();
   Future<int> addTransaction(int debitId, int creditId, int amount, DateTime date) {
     return into(transactions).insert(TransactionsCompanion(
       debitAccountId: Value(debitId),
@@ -59,48 +85,38 @@ class MyDatabase extends _$MyDatabase {
       date: Value(date),
     ));
   }
+  Future<void> deleteTransaction(int id) {
+    return (delete(transactions)..where((t) => t.id.equals(id))).go();
+  }
 
-// ★変更: 科目追加時に予算も登録できるようにする
-  Future<int> addAccount(String name, String type, int? budget) {
-    return into(accounts).insert(AccountsCompanion(
+  // --- ★Templates (New!) ---
+  Future<List<Template>> getAllTemplates() => select(templates).get();
+
+  Future<int> addTemplate(String name, int debitId, int creditId, int amount) {
+    return into(templates).insert(TemplatesCompanion(
       name: Value(name),
-      type: Value(type),
-      monthlyBudget: Value(budget),
+      debitAccountId: Value(debitId),
+      creditAccountId: Value(creditId),
+      amount: Value(amount),
     ));
   }
 
-  // ★追加: 科目の予算を更新する機能
-  Future<void> updateAccountBudget(int id, int budget) {
-    return (update(accounts)..where((a) => a.id.equals(id))).write(
-      AccountsCompanion(monthlyBudget: Value(budget)),
-    );
-  }
-  
-  // 取引を削除
-  Future<int> deleteTransaction(int id) {
-    return (delete(transactions)..where((t) => t.id.equals(id))).go();
+  Future<void> deleteTemplate(int id) {
+    return (delete(templates)..where((t) => t.id.equals(id))).go();
   }
 
   // 初期データ投入
   Future<void> seedDefaultAccounts() async {
-    final count = await select(accounts).get().then((l) => l.length);
-    if (count == 0) {
-      await batch((batch) {
-        batch.insertAll(accounts, [
-          // 資産 (Assets)
-          AccountsCompanion.insert(name: '現金', type: 'asset'),
-          AccountsCompanion.insert(name: '銀行口座', type: 'asset'),
-          // 費用 (Expenses)
-          AccountsCompanion.insert(name: '食費', type: 'expense'),
-          AccountsCompanion.insert(name: '交通費', type: 'expense'),
-          AccountsCompanion.insert(name: '日用品', type: 'expense'),
-          AccountsCompanion.insert(name: 'エンタメ', type: 'expense'),
-          // 収益 (Income)
-          AccountsCompanion.insert(name: '給与', type: 'income'),
-          // 負債 (Liability)
-          AccountsCompanion.insert(name: 'クレカ', type: 'liability'),
-        ]);
-      });
+    final allAccounts = await getAllAccounts();
+    if (allAccounts.isEmpty) {
+      await addAccount('現金', 'asset', null);
+      await addAccount('銀行口座', 'asset', null);
+      await addAccount('クレジットカード', 'liability', null);
+      await addAccount('食費', 'expense', 50000);
+      await addAccount('日用品', 'expense', 10000);
+      await addAccount('交通費', 'expense', 10000);
+      await addAccount('給料', 'income', null);
+      await addAccount('その他', 'expense', 10000);
     }
   }
 }
