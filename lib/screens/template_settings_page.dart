@@ -1,3 +1,4 @@
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
@@ -50,13 +51,13 @@ class _TemplateSettingsPageState extends State<TemplateSettingsPage> {
                   TextField(controller: amountController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: '金額')),
                   const SizedBox(height: 10),
                   DropdownButtonFormField<int>(
-                    value: debitId,
+                    initialValue: debitId,
                     hint: const Text('借方 (何に？)'),
                     items: _accounts.map((a) => DropdownMenuItem(value: a.id, child: Text(a.name))).toList(),
                     onChanged: (v) => setState(() => debitId = v),
                   ),
                   DropdownButtonFormField<int>(
-                    value: creditId,
+                    initialValue: creditId,
                     hint: const Text('貸方 (どうやって？)'),
                     items: _accounts.map((a) => DropdownMenuItem(value: a.id, child: Text(a.name))).toList(),
                     onChanged: (v) => setState(() => creditId = v),
@@ -97,8 +98,9 @@ class _TemplateSettingsPageState extends State<TemplateSettingsPage> {
           itemCount: _templates.length,
           itemBuilder: (context, index) {
             final t = _templates[index];
-            final debitName = _accounts.firstWhere((a) => a.id == t.debitAccountId, orElse: () => const Account(id: -1, name: '?', type: '')).name;
-            final creditName = _accounts.firstWhere((a) => a.id == t.creditAccountId, orElse: () => const Account(id: -1, name: '?', type: '')).name;
+            // ★修正箇所: costType: 'variable' を追加してエラーを解消
+            final debitName = _accounts.firstWhere((a) => a.id == t.debitAccountId, orElse: () => const Account(id: -1, name: '?', type: '', costType: 'variable')).name;
+            final creditName = _accounts.firstWhere((a) => a.id == t.creditAccountId, orElse: () => const Account(id: -1, name: '?', type: '', costType: 'variable')).name;
 
             return ListTile(
               title: Text(t.name, style: const TextStyle(fontWeight: FontWeight.bold)),

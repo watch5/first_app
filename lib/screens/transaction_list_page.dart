@@ -1,15 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
-import '../../database.dart'; // データベースの型(Transaction, Account)を使うため
+import '../database.dart'; 
 
-class TransactionListPage extends StatelessWidget {
+class TransactionListScreen extends StatelessWidget {
   final List<Transaction> transactions;
   final List<Account> accounts;
   final Function(int) onDelete;
-  final Function(Transaction) onEdit; // 編集用コールバック
+  final Function(Transaction) onEdit; // これが定義されているか確認
 
-  const TransactionListPage({
+  const TransactionListScreen({
     super.key,
     required this.transactions,
     required this.accounts,
@@ -18,13 +18,12 @@ class TransactionListPage extends StatelessWidget {
   });
 
   String _getAccountName(int id) => 
-      accounts.firstWhere((a) => a.id == id, orElse: () => const Account(id: -1, name: '?', type: '', monthlyBudget: null)).name;
+      accounts.firstWhere((a) => a.id == id, orElse: () => const Account(id: -1, name: '?', type: '', monthlyBudget: null, costType: 'variable')).name;
 
   @override
   Widget build(BuildContext context) {
     if (transactions.isEmpty) return const Center(child: Text('データがありません'));
     
-    // テーマカラーを取得
     final colorScheme = Theme.of(context).colorScheme;
     
     return ListView.builder(
@@ -56,7 +55,7 @@ class TransactionListPage extends StatelessWidget {
             ),
             subtitle: Text(DateFormat('yyyy/MM/dd').format(t.date)),
             trailing: Text(
-              fmt.format(t.amount),
+              '${fmt.format(t.amount)} 円',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: colorScheme.primary),
             ),
             onTap: () {

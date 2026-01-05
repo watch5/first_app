@@ -13,6 +13,8 @@ class Accounts extends Table {
   TextColumn get name => text()();
   TextColumn get type => text()(); // 'asset', 'liability', 'income', 'expense'
   IntColumn get monthlyBudget => integer().nullable()();
+  // 固定費(fixed)か変動費(variable)か。デフォルトはvariable
+  TextColumn get costType => text().withDefault(const Constant('variable'))(); 
 }
 
 // --- 2. 取引明細テーブル ---
@@ -36,12 +38,10 @@ class Templates extends Table {
 // --- データベース本体 ---
 @DriftDatabase(tables: [Accounts, Transactions, Templates]) 
 class MyDatabase extends _$MyDatabase {
-  // ★ここでエラーが出ていたのは、_openConnection がこのクラスの中にあったからです。
-  // 下の方にある _openConnection() を呼び出します。
   MyDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -53,6 +53,9 @@ class MyDatabase extends _$MyDatabase {
       if (from < 3) {
         await m.createTable(templates);
       }
+      if (from < 4) {
+        await m.addColumn(accounts, accounts.costType);
+      }
     },
   );
 
@@ -60,17 +63,38 @@ class MyDatabase extends _$MyDatabase {
 
   // Accounts
   Future<List<Account>> getAllAccounts() => select(accounts).get();
-  Future<int> addAccount(String name, String type, int? budget) {
+  
+  // 4つ目の引数 costType を追加
+  Future<int> addAccount(String name, String type, int? budget, String costType) {
     return into(accounts).insert(AccountsCompanion(
       name: Value(name),
       type: Value(type),
       monthlyBudget: Value(budget),
+      costType: Value(costType),
     ));
   }
+  
+  // 費用区分を更新するメソッド
+  Future<void> updateAccountCostType(int id, String costType) {
+    return (update(accounts)..where((a) => a.id.equals(id))).write(
+      AccountsCompanion(costType: Value(costType)),
+    );
+  }
+
   Future<void> updateAccountBudget(int id, int budget) {
     return (update(accounts)..where((a) => a.id.equals(id))).write(
       AccountsCompanion(monthlyBudget: Value(budget)),
     );
+  }
+  
+  // 科目を削除する（関連する取引データも全て削除する）
+  Future<void> deleteAccount(int id) {
+    return transaction(() async {
+      await (delete(transactions)..where((t) => 
+        t.debitAccountId.equals(id) | t.creditAccountId.equals(id)
+      )).go();
+      await (delete(accounts)..where((a) => a.id.equals(id))).go();
+    });
   }
 
   // Transactions
@@ -83,11 +107,8 @@ class MyDatabase extends _$MyDatabase {
       date: Value(date),
     ));
   }
-  Future<void> deleteTransaction(int id) {
-    return (delete(transactions)..where((t) => t.id.equals(id))).go();
-  }
-
-  // --- 取引データの更新 (編集用) ---
+  
+  // 取引データの更新
   Future<void> updateTransaction(int id, int debitId, int creditId, int amount, DateTime date) {
     return (update(transactions)..where((t) => t.id.equals(id))).write(
       TransactionsCompanion(
@@ -99,19 +120,8 @@ class MyDatabase extends _$MyDatabase {
     );
   }
 
-// 科目を削除する（関連する取引データも全て削除する）
-  Future<void> deleteAccount(int id) {
-    // transactionで囲むことで、万が一途中でエラーが出ても整合性を保ちます
-    return transaction(() async {
-      // 1. まず、その科目を使っている取引を全て削除する
-      // (Driftの書き方: | は OR を意味します)
-      await (delete(transactions)..where((t) => 
-        t.debitAccountId.equals(id) | t.creditAccountId.equals(id)
-      )).go();
-      
-      // 2. 次に、科目自体を削除する
-      await (delete(accounts)..where((a) => a.id.equals(id))).go();
-    });
+  Future<void> deleteTransaction(int id) {
+    return (delete(transactions)..where((t) => t.id.equals(id))).go();
   }
 
   // Templates
@@ -128,47 +138,47 @@ class MyDatabase extends _$MyDatabase {
     return (delete(templates)..where((t) => t.id.equals(id))).go();
   }
 
-  // ★初期データ投入（リッチ版）
+  // ★初期データ投入（引数を修正済み）
   Future<void> seedDefaultAccounts() async {
     final allAccounts = await getAllAccounts();
     if (allAccounts.isEmpty) {
       // --- 資産 (Assets) ---
-      await addAccount('現金', 'asset', null);
-      await addAccount('銀行口座', 'asset', null);
-      await addAccount('PayPay', 'asset', null);
-      await addAccount('Suica/PASMO', 'asset', null);
+      // 費用ではないので costType は 'variable' (デフォルト扱い) でOK
+      await addAccount('現金', 'asset', null, 'variable');
+      await addAccount('銀行口座', 'asset', null, 'variable');
+      await addAccount('PayPay', 'asset', null, 'variable');
+      await addAccount('Suica/PASMO', 'asset', null, 'variable');
 
       // --- 負債 (Liabilities) ---
-      await addAccount('クレジットカード', 'liability', null);
+      await addAccount('クレジットカード', 'liability', null, 'variable');
       
       // --- 収益 (Income) ---
-      await addAccount('給料', 'income', null);
-      await addAccount('ボーナス', 'income', null);
-      await addAccount('臨時収入', 'income', null);
+      await addAccount('給料', 'income', null, 'variable');
+      await addAccount('ボーナス', 'income', null, 'variable');
+      await addAccount('臨時収入', 'income', null, 'variable');
 
       // --- 費用 (Expenses) ---
-      // 固定費
-      await addAccount('家賃', 'expense', 70000);
-      await addAccount('電気代', 'expense', 5000);
-      await addAccount('ガス代', 'expense', 4000);
-      await addAccount('水道代', 'expense', 3000);
-      await addAccount('通信費', 'expense', 5000); // スマホ・ネット
+      // 固定費 (Fixed)
+      await addAccount('家賃', 'expense', 70000, 'fixed');
+      await addAccount('電気代', 'expense', 5000, 'fixed');
+      await addAccount('ガス代', 'expense', 4000, 'fixed');
+      await addAccount('水道代', 'expense', 3000, 'fixed');
+      await addAccount('通信費', 'expense', 5000, 'fixed'); // スマホ・ネット
       
-      // 変動費
-      await addAccount('食費', 'expense', 30000);
-      await addAccount('外食', 'expense', 10000);
-      await addAccount('日用品', 'expense', 5000);
-      await addAccount('交通費', 'expense', 10000);
-      await addAccount('衣服・美容', 'expense', 10000);
-      await addAccount('交際費', 'expense', 10000);
-      await addAccount('医療費', 'expense', 5000);
-      await addAccount('趣味・娯楽', 'expense', 10000); // 推し活など
-      await addAccount('その他', 'expense', 5000);
+      // 変動費 (Variable)
+      await addAccount('食費', 'expense', 30000, 'variable');
+      await addAccount('外食', 'expense', 10000, 'variable');
+      await addAccount('日用品', 'expense', 5000, 'variable');
+      await addAccount('交通費', 'expense', 10000, 'variable');
+      await addAccount('衣服・美容', 'expense', 10000, 'variable');
+      await addAccount('交際費', 'expense', 10000, 'variable');
+      await addAccount('医療費', 'expense', 5000, 'variable');
+      await addAccount('趣味・娯楽', 'expense', 10000, 'variable');
+      await addAccount('その他', 'expense', 5000, 'variable');
     }
   }
-} // ★重要：クラスはここで閉じる！
+}
 
-// ★重要：この関数はクラスの「外」に置く必要があります！
 LazyDatabase _openConnection() {
   return LazyDatabase(() async {
     final dbFolder = await getApplicationDocumentsDirectory();

@@ -50,8 +50,26 @@ class $AccountsTable extends Accounts with TableInfo<$AccountsTable, Account> {
     type: DriftSqlType.int,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _costTypeMeta = const VerificationMeta(
+    'costType',
+  );
   @override
-  List<GeneratedColumn> get $columns => [id, name, type, monthlyBudget];
+  late final GeneratedColumn<String> costType = GeneratedColumn<String>(
+    'cost_type',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('variable'),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    name,
+    type,
+    monthlyBudget,
+    costType,
+  ];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -92,6 +110,12 @@ class $AccountsTable extends Accounts with TableInfo<$AccountsTable, Account> {
         ),
       );
     }
+    if (data.containsKey('cost_type')) {
+      context.handle(
+        _costTypeMeta,
+        costType.isAcceptableOrUnknown(data['cost_type']!, _costTypeMeta),
+      );
+    }
     return context;
   }
 
@@ -117,6 +141,10 @@ class $AccountsTable extends Accounts with TableInfo<$AccountsTable, Account> {
         DriftSqlType.int,
         data['${effectivePrefix}monthly_budget'],
       ),
+      costType: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}cost_type'],
+      )!,
     );
   }
 
@@ -131,11 +159,13 @@ class Account extends DataClass implements Insertable<Account> {
   final String name;
   final String type;
   final int? monthlyBudget;
+  final String costType;
   const Account({
     required this.id,
     required this.name,
     required this.type,
     this.monthlyBudget,
+    required this.costType,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -146,6 +176,7 @@ class Account extends DataClass implements Insertable<Account> {
     if (!nullToAbsent || monthlyBudget != null) {
       map['monthly_budget'] = Variable<int>(monthlyBudget);
     }
+    map['cost_type'] = Variable<String>(costType);
     return map;
   }
 
@@ -157,6 +188,7 @@ class Account extends DataClass implements Insertable<Account> {
       monthlyBudget: monthlyBudget == null && nullToAbsent
           ? const Value.absent()
           : Value(monthlyBudget),
+      costType: Value(costType),
     );
   }
 
@@ -170,6 +202,7 @@ class Account extends DataClass implements Insertable<Account> {
       name: serializer.fromJson<String>(json['name']),
       type: serializer.fromJson<String>(json['type']),
       monthlyBudget: serializer.fromJson<int?>(json['monthlyBudget']),
+      costType: serializer.fromJson<String>(json['costType']),
     );
   }
   @override
@@ -180,6 +213,7 @@ class Account extends DataClass implements Insertable<Account> {
       'name': serializer.toJson<String>(name),
       'type': serializer.toJson<String>(type),
       'monthlyBudget': serializer.toJson<int?>(monthlyBudget),
+      'costType': serializer.toJson<String>(costType),
     };
   }
 
@@ -188,6 +222,7 @@ class Account extends DataClass implements Insertable<Account> {
     String? name,
     String? type,
     Value<int?> monthlyBudget = const Value.absent(),
+    String? costType,
   }) => Account(
     id: id ?? this.id,
     name: name ?? this.name,
@@ -195,6 +230,7 @@ class Account extends DataClass implements Insertable<Account> {
     monthlyBudget: monthlyBudget.present
         ? monthlyBudget.value
         : this.monthlyBudget,
+    costType: costType ?? this.costType,
   );
   Account copyWithCompanion(AccountsCompanion data) {
     return Account(
@@ -204,6 +240,7 @@ class Account extends DataClass implements Insertable<Account> {
       monthlyBudget: data.monthlyBudget.present
           ? data.monthlyBudget.value
           : this.monthlyBudget,
+      costType: data.costType.present ? data.costType.value : this.costType,
     );
   }
 
@@ -213,13 +250,14 @@ class Account extends DataClass implements Insertable<Account> {
           ..write('id: $id, ')
           ..write('name: $name, ')
           ..write('type: $type, ')
-          ..write('monthlyBudget: $monthlyBudget')
+          ..write('monthlyBudget: $monthlyBudget, ')
+          ..write('costType: $costType')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, name, type, monthlyBudget);
+  int get hashCode => Object.hash(id, name, type, monthlyBudget, costType);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -227,7 +265,8 @@ class Account extends DataClass implements Insertable<Account> {
           other.id == this.id &&
           other.name == this.name &&
           other.type == this.type &&
-          other.monthlyBudget == this.monthlyBudget);
+          other.monthlyBudget == this.monthlyBudget &&
+          other.costType == this.costType);
 }
 
 class AccountsCompanion extends UpdateCompanion<Account> {
@@ -235,17 +274,20 @@ class AccountsCompanion extends UpdateCompanion<Account> {
   final Value<String> name;
   final Value<String> type;
   final Value<int?> monthlyBudget;
+  final Value<String> costType;
   const AccountsCompanion({
     this.id = const Value.absent(),
     this.name = const Value.absent(),
     this.type = const Value.absent(),
     this.monthlyBudget = const Value.absent(),
+    this.costType = const Value.absent(),
   });
   AccountsCompanion.insert({
     this.id = const Value.absent(),
     required String name,
     required String type,
     this.monthlyBudget = const Value.absent(),
+    this.costType = const Value.absent(),
   }) : name = Value(name),
        type = Value(type);
   static Insertable<Account> custom({
@@ -253,12 +295,14 @@ class AccountsCompanion extends UpdateCompanion<Account> {
     Expression<String>? name,
     Expression<String>? type,
     Expression<int>? monthlyBudget,
+    Expression<String>? costType,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (name != null) 'name': name,
       if (type != null) 'type': type,
       if (monthlyBudget != null) 'monthly_budget': monthlyBudget,
+      if (costType != null) 'cost_type': costType,
     });
   }
 
@@ -267,12 +311,14 @@ class AccountsCompanion extends UpdateCompanion<Account> {
     Value<String>? name,
     Value<String>? type,
     Value<int?>? monthlyBudget,
+    Value<String>? costType,
   }) {
     return AccountsCompanion(
       id: id ?? this.id,
       name: name ?? this.name,
       type: type ?? this.type,
       monthlyBudget: monthlyBudget ?? this.monthlyBudget,
+      costType: costType ?? this.costType,
     );
   }
 
@@ -291,6 +337,9 @@ class AccountsCompanion extends UpdateCompanion<Account> {
     if (monthlyBudget.present) {
       map['monthly_budget'] = Variable<int>(monthlyBudget.value);
     }
+    if (costType.present) {
+      map['cost_type'] = Variable<String>(costType.value);
+    }
     return map;
   }
 
@@ -300,7 +349,8 @@ class AccountsCompanion extends UpdateCompanion<Account> {
           ..write('id: $id, ')
           ..write('name: $name, ')
           ..write('type: $type, ')
-          ..write('monthlyBudget: $monthlyBudget')
+          ..write('monthlyBudget: $monthlyBudget, ')
+          ..write('costType: $costType')
           ..write(')'))
         .toString();
   }
@@ -1047,6 +1097,7 @@ typedef $$AccountsTableCreateCompanionBuilder =
       required String name,
       required String type,
       Value<int?> monthlyBudget,
+      Value<String> costType,
     });
 typedef $$AccountsTableUpdateCompanionBuilder =
     AccountsCompanion Function({
@@ -1054,6 +1105,7 @@ typedef $$AccountsTableUpdateCompanionBuilder =
       Value<String> name,
       Value<String> type,
       Value<int?> monthlyBudget,
+      Value<String> costType,
     });
 
 class $$AccountsTableFilterComposer
@@ -1082,6 +1134,11 @@ class $$AccountsTableFilterComposer
 
   ColumnFilters<int> get monthlyBudget => $composableBuilder(
     column: $table.monthlyBudget,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get costType => $composableBuilder(
+    column: $table.costType,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -1114,6 +1171,11 @@ class $$AccountsTableOrderingComposer
     column: $table.monthlyBudget,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get costType => $composableBuilder(
+    column: $table.costType,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$AccountsTableAnnotationComposer
@@ -1138,6 +1200,9 @@ class $$AccountsTableAnnotationComposer
     column: $table.monthlyBudget,
     builder: (column) => column,
   );
+
+  GeneratedColumn<String> get costType =>
+      $composableBuilder(column: $table.costType, builder: (column) => column);
 }
 
 class $$AccountsTableTableManager
@@ -1172,11 +1237,13 @@ class $$AccountsTableTableManager
                 Value<String> name = const Value.absent(),
                 Value<String> type = const Value.absent(),
                 Value<int?> monthlyBudget = const Value.absent(),
+                Value<String> costType = const Value.absent(),
               }) => AccountsCompanion(
                 id: id,
                 name: name,
                 type: type,
                 monthlyBudget: monthlyBudget,
+                costType: costType,
               ),
           createCompanionCallback:
               ({
@@ -1184,11 +1251,13 @@ class $$AccountsTableTableManager
                 required String name,
                 required String type,
                 Value<int?> monthlyBudget = const Value.absent(),
+                Value<String> costType = const Value.absent(),
               }) => AccountsCompanion.insert(
                 id: id,
                 name: name,
                 type: type,
                 monthlyBudget: monthlyBudget,
+                costType: costType,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))

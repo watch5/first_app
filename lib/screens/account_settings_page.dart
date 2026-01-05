@@ -35,14 +35,16 @@ class _AccountSettingsPageState extends State<AccountSettingsPage> {
     try {
       adjAccount = accounts.firstWhere((a) => a.name == '残高調整');
     } catch (e) {
-      await widget.db.addAccount('残高調整', 'expense', null);
+      await widget.db.addAccount('残高調整', 'expense', null, 'variable'); // デフォルトは変動費で作成
       final newAccounts = await widget.db.getAllAccounts();
       adjAccount = newAccounts.firstWhere((a) => a.name == '残高調整');
     }
 
     if (diff > 0) {
+      // 資産を増やす (借方:Asset / 貸方:残高調整)
       await widget.db.addTransaction(accountId, adjAccount.id, diff, DateTime.now());
     } else {
+      // 資産を減らす (借方:残高調整 / 貸方:Asset)
       await widget.db.addTransaction(adjAccount.id, accountId, diff.abs(), DateTime.now());
     }
   }
@@ -74,7 +76,7 @@ class _AccountSettingsPageState extends State<AccountSettingsPage> {
 
     if (confirm == true) {
       HapticFeedback.heavyImpact();
-      await widget.db.deleteAccount(account.id); // DBに追加したメソッドを呼ぶ
+      await widget.db.deleteAccount(account.id);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('${account.name} を削除しました')),
@@ -89,7 +91,11 @@ class _AccountSettingsPageState extends State<AccountSettingsPage> {
     final nameController = TextEditingController(text: account.name);
     final budgetController = TextEditingController(text: account.monthlyBudget?.toString() ?? '');
     final balanceController = TextEditingController();
+    
+    // 現在の費用区分を初期値にセット
+    String currentCostType = account.costType; 
 
+    // 現在の残高を計算して表示する (資産・負債のみ)
     int currentBalance = 0;
     if (account.type == 'asset' || account.type == 'liability') {
       final transactions = await widget.db.getTransactions();
@@ -104,67 +110,97 @@ class _AccountSettingsPageState extends State<AccountSettingsPage> {
 
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('${account.name} の編集'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: nameController,
-                decoration: const InputDecoration(labelText: '科目名'),
-              ),
-              const SizedBox(height: 10),
-              if (account.type == 'expense')
-                 TextField(
-                  controller: budgetController,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: '月予算'),
-                ),
-              if (account.type == 'asset' || account.type == 'liability')
-                 TextField(
-                  controller: balanceController,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: '現在の残高',
-                    helperText: '変更すると調整データが自動作成されます',
+      builder: (ctx) => StatefulBuilder( // Dropdownの再描画のためにStatefulBuilderが必要
+        builder: (context, setState) {
+          return AlertDialog(
+            title: Text('${account.name} の編集'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: nameController,
+                    decoration: const InputDecoration(labelText: '科目名'),
                   ),
-                ),
-            ],
-          ),
-        ),
-        actionsAlignment: MainAxisAlignment.spaceBetween, // ボタンを左右に離す
-        actions: [
-          // 削除ボタン（左側）
-          TextButton.icon(
-            onPressed: () async {
-              Navigator.pop(ctx); // まず編集ダイアログを閉じる
-              await _deleteAccount(account); // 削除確認フローへ
-            },
-            icon: const Icon(Icons.delete, color: Colors.red),
-            label: const Text('削除', style: TextStyle(color: Colors.red)),
-          ),
-          // 保存・キャンセルボタン（右側）
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('キャンセル')),
-              TextButton(
+                  const SizedBox(height: 10),
+                  
+                  // 費用の場合のみ、固定費・変動費を選択
+                  if (account.type == 'expense') ...[
+                    DropdownButtonFormField<String>(
+                      initialValue: currentCostType,
+                      decoration: const InputDecoration(labelText: '費用の種類'),
+                      items: const [
+                        DropdownMenuItem(value: 'variable', child: Text('変動費 (食費・日用品など)')),
+                        DropdownMenuItem(value: 'fixed', child: Text('固定費 (家賃・サブスクなど)')),
+                      ],
+                      onChanged: (val) => setState(() => currentCostType = val!),
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: budgetController,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(labelText: '月予算'),
+                    ),
+                  ],
+
+                  if (account.type == 'asset' || account.type == 'liability')
+                     TextField(
+                      controller: balanceController,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: '現在の残高',
+                        helperText: '変更すると調整データが自動作成されます',
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            actionsAlignment: MainAxisAlignment.spaceBetween, // ボタンを左右に離す
+            actions: [
+              // 左側：削除ボタン
+              TextButton.icon(
                 onPressed: () async {
-                  HapticFeedback.mediumImpact();
-                  if (account.type == 'asset' || account.type == 'liability') {
-                    final newBalance = int.tryParse(balanceController.text) ?? currentBalance;
-                    await _adjustBalance(account.id, currentBalance, newBalance);
-                  }
-                  // 名前変更機能などは必要に応じてDB更新メソッドを追加して実装
-                  _loadAccounts();
-                  if (context.mounted) Navigator.pop(ctx);
+                  Navigator.pop(ctx); // まず編集ダイアログを閉じる
+                  await _deleteAccount(account); // 削除確認フローへ
                 },
-                child: const Text('保存'),
+                icon: const Icon(Icons.delete, color: Colors.red),
+                label: const Text('削除', style: TextStyle(color: Colors.red)),
+              ),
+              // 右側：キャンセル・保存ボタン
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('キャンセル')),
+                  TextButton(
+                    onPressed: () async {
+                      HapticFeedback.mediumImpact();
+                      
+                      // 1. 残高調整の実行
+                      if (account.type == 'asset' || account.type == 'liability') {
+                         final newBalance = int.tryParse(balanceController.text) ?? currentBalance;
+                         await _adjustBalance(account.id, currentBalance, newBalance);
+                      }
+                      
+                      // 2. 費用区分の更新 (ついでに予算も更新したければここでupdate処理が必要ですが、今回は区分更新のみ追加)
+                      if (account.type == 'expense') {
+                        await widget.db.updateAccountCostType(account.id, currentCostType);
+                        // 予算更新が必要なら updateAccountBudget を呼ぶか、DBメソッドを拡張する必要があります
+                        final budget = int.tryParse(budgetController.text);
+                        if (budget != null) {
+                           await widget.db.updateAccountBudget(account.id, budget);
+                        }
+                      }
+
+                      _loadAccounts();
+                      if (context.mounted) Navigator.pop(ctx);
+                    },
+                    child: const Text('保存'),
+                  ),
+                ],
               ),
             ],
-          ),
-        ],
+          );
+        }
       ),
     );
   }
@@ -175,6 +211,7 @@ class _AccountSettingsPageState extends State<AccountSettingsPage> {
     final budgetController = TextEditingController();
     final initialBalanceController = TextEditingController(); 
     String type = 'expense';
+    String costType = 'variable'; // デフォルトは変動費
 
     showDialog(
       context: context,
@@ -189,7 +226,7 @@ class _AccountSettingsPageState extends State<AccountSettingsPage> {
                   TextField(controller: nameController, decoration: const InputDecoration(labelText: '科目名'), autofocus: true),
                   const SizedBox(height: 20),
                   DropdownButtonFormField<String>(
-                    value: type,
+                    initialValue: type,
                     items: const [
                       DropdownMenuItem(value: 'expense', child: Text('費用 (使った)')),
                       DropdownMenuItem(value: 'income', child: Text('収益 (入った)')),
@@ -200,8 +237,22 @@ class _AccountSettingsPageState extends State<AccountSettingsPage> {
                     decoration: const InputDecoration(labelText: '種類'),
                   ),
                   const SizedBox(height: 10),
-                  if (type == 'expense')
+                  
+                  // 費用を選んだときだけ表示
+                  if (type == 'expense') ...[
+                    DropdownButtonFormField<String>(
+                      initialValue: costType,
+                      decoration: const InputDecoration(labelText: '費用の種類'),
+                      items: const [
+                        DropdownMenuItem(value: 'variable', child: Text('変動費 (食費・日用品など)')),
+                        DropdownMenuItem(value: 'fixed', child: Text('固定費 (家賃・サブスクなど)')),
+                      ],
+                      onChanged: (val) => setState(() => costType = val!),
+                    ),
+                    const SizedBox(height: 10),
                     TextField(controller: budgetController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: '月予算')),
+                  ],
+
                   if (type == 'asset' || type == 'liability')
                     TextField(
                       controller: initialBalanceController,
@@ -218,17 +269,25 @@ class _AccountSettingsPageState extends State<AccountSettingsPage> {
                   if (nameController.text.isNotEmpty) {
                     HapticFeedback.mediumImpact();
                     final budget = int.tryParse(budgetController.text);
-                    await widget.db.addAccount(nameController.text, type, budget);
+                    
+                    // costTypeを渡して作成
+                    await widget.db.addAccount(nameController.text, type, budget, costType);
+                    
+                    // 開始残高設定
                     final accounts = await widget.db.getAllAccounts();
                     final newAccount = accounts.lastWhere((a) => a.name == nameController.text);
                     final initialBalance = int.tryParse(initialBalanceController.text) ?? 0;
                     if (initialBalance > 0) {
                        Account? capitalAccount;
                        try { capitalAccount = accounts.firstWhere((a) => a.name == '元入金'); } 
-                       catch (e) { await widget.db.addAccount('元入金', 'liability', null); capitalAccount = (await widget.db.getAllAccounts()).firstWhere((a) => a.name == '元入金'); }
+                       catch (e) { 
+                         await widget.db.addAccount('元入金', 'liability', null, 'variable'); 
+                         capitalAccount = (await widget.db.getAllAccounts()).firstWhere((a) => a.name == '元入金'); 
+                       }
                        
-                       if (type == 'asset') await widget.db.addTransaction(newAccount.id, capitalAccount.id, initialBalance, DateTime.now());
-                       else if (type == 'liability') await widget.db.addTransaction(capitalAccount.id, newAccount.id, initialBalance, DateTime.now());
+                       if (type == 'asset') {
+                         await widget.db.addTransaction(newAccount.id, capitalAccount.id, initialBalance, DateTime.now());
+                       } else if (type == 'liability') await widget.db.addTransaction(capitalAccount.id, newAccount.id, initialBalance, DateTime.now());
                     }
                     _loadAccounts();
                     if (context.mounted) Navigator.pop(ctx);
@@ -263,10 +322,18 @@ class _AccountSettingsPageState extends State<AccountSettingsPage> {
             case 'liability': icon = Icons.credit_card; color = Colors.orange; typeName='負債'; break;
             default: icon = Icons.shopping_bag; color = Colors.redAccent; typeName='費用';
           }
+          
+          // 費用なら固定費か変動費かを表示
+          if (a.type == 'expense') {
+            typeName = a.costType == 'fixed' ? '固定費' : '変動費';
+          }
+
           return ListTile(
             leading: CircleAvatar(backgroundColor: color.withValues(alpha: 0.2), child: Icon(icon, color: color, size: 20)),
             title: Text(a.name),
-            subtitle: a.monthlyBudget != null ? Text('月予算: ¥${fmt.format(a.monthlyBudget)}') : Text(typeName, style: const TextStyle(color: Colors.grey)),
+            subtitle: a.monthlyBudget != null 
+                ? Text('月予算: ¥${fmt.format(a.monthlyBudget)} ($typeName)') 
+                : Text(typeName, style: const TextStyle(color: Colors.grey)),
             trailing: const Icon(Icons.edit, size: 16, color: Colors.grey),
             onTap: () => _showEditDialog(a),
           );

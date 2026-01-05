@@ -2,8 +2,8 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
-import '../../database.dart'; // フォルダ移動したのでパス修正済み
-import '../../widgets/t_account_table.dart'; // フォルダ移動したのでパス修正済み
+import '../database.dart'; 
+import '../widgets/t_account_table.dart'; 
 
 class PLPage extends StatefulWidget {
   final List<Transaction> transactions;
@@ -29,10 +29,12 @@ class _PLPageState extends State<PLPage> {
   Widget build(BuildContext context) {
     final thisMonthTrans = widget.transactions.where((t) => t.date.year == _targetMonth.year && t.date.month == _targetMonth.month).toList();
 
-    int totalIncome = 0;
-    int totalExpense = 0;
+    int totalIncome = 0;   // 売上高
+    int variableCosts = 0; // 変動費
+    int fixedCosts = 0;    // 固定費
+    int totalExpense = 0;  // 費用合計
     
-    // 全科目で初期化（0円表示用）
+    // 全科目で初期化
     Map<Account, int> expenseBreakdownAccount = {}; 
     Map<String, int> expenseMap = {}; 
     Map<String, int> incomeMap = {}; 
@@ -48,13 +50,20 @@ class _PLPageState extends State<PLPage> {
 
     // 集計
     for (var t in thisMonthTrans) {
-      final debit = widget.accounts.firstWhere((a) => a.id == t.debitAccountId, orElse: () => const Account(id: -1, name: '不明', type: ''));
-      final credit = widget.accounts.firstWhere((a) => a.id == t.creditAccountId, orElse: () => const Account(id: -1, name: '不明', type: ''));
+      final debit = widget.accounts.firstWhere((a) => a.id == t.debitAccountId, orElse: () => const Account(id: -1, name: '不明', type: '', costType: 'variable'));
+      final credit = widget.accounts.firstWhere((a) => a.id == t.creditAccountId, orElse: () => const Account(id: -1, name: '不明', type: '', costType: 'variable'));
 
       if (debit.type == 'expense') {
         totalExpense += t.amount;
         expenseBreakdownAccount[debit] = (expenseBreakdownAccount[debit] ?? 0) + t.amount;
         expenseMap[debit.name] = (expenseMap[debit.name] ?? 0) + t.amount;
+        
+        // ★固定費・変動費の振り分け
+        if (debit.costType == 'fixed') {
+          fixedCosts += t.amount;
+        } else {
+          variableCosts += t.amount;
+        }
       }
       if (credit.type == 'income') {
         totalIncome += t.amount;
@@ -62,20 +71,25 @@ class _PLPageState extends State<PLPage> {
       }
     }
 
-    final profit = totalIncome - totalExpense;
+    // --- ★経営分析ロジック ---
+    final marginalProfit = totalIncome - variableCosts; // 限界利益
+    final profit = marginalProfit - fixedCosts; // 利益 ( = totalIncome - totalExpense と同じ)
+    
+    double marginalProfitRatio = 0; // 限界利益率
+    if (totalIncome > 0) {
+      marginalProfitRatio = marginalProfit / totalIncome;
+    }
+
+    int breakEvenPoint = 0; // 損益分岐点
+    if (marginalProfitRatio > 0) {
+      breakEvenPoint = (fixedCosts / marginalProfitRatio).round();
+    }
+
     final fmt = NumberFormat("#,###");
 
-    // T字勘定用のソート（金額順）
-    final expenseList = expenseMap.entries.toList()..sort((a, b) {
-      int compare = b.value.compareTo(a.value);
-      return compare != 0 ? compare : a.key.compareTo(b.key);
-    });
-    final incomeList = incomeMap.entries.toList()..sort((a, b) {
-      int compare = b.value.compareTo(a.value);
-      return compare != 0 ? compare : a.key.compareTo(b.key);
-    });
-
-    // グラフや合計の計算
+    // T字勘定用リスト作成
+    final expenseList = expenseMap.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+    final incomeList = incomeMap.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
     int grandTotal = 0;
     if (profit >= 0) {
       expenseList.add(MapEntry('当期純利益', profit));
@@ -84,14 +98,11 @@ class _PLPageState extends State<PLPage> {
       incomeList.add(MapEntry('当期純損失', -profit));
       grandTotal = totalExpense;
     }
-    // どちらも0の場合の表示対策
     if (grandTotal == 0 && (totalIncome > 0 || totalExpense > 0)) {
         grandTotal = totalIncome > totalExpense ? totalIncome : totalExpense;
     }
 
     final colorScheme = Theme.of(context).colorScheme;
-
-    // ★修正箇所: ここで予算リスト用のソート済みデータを作っておく（これでエラー回避！）
     final sortedExpenses = expenseBreakdownAccount.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
 
@@ -99,7 +110,7 @@ class _PLPageState extends State<PLPage> {
       padding: const EdgeInsets.all(16),
       child: Column(
         children: [
-          // 月切り替えヘッダー
+          // 月切り替え
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -115,7 +126,6 @@ class _PLPageState extends State<PLPage> {
                       setState(() => _isTableView = !_isTableView);
                     },
                     icon: Icon(_isTableView ? Icons.pie_chart : Icons.description),
-                    tooltip: '表示切り替え',
                   ),
                 ],
               ),
@@ -123,7 +133,7 @@ class _PLPageState extends State<PLPage> {
           ),
           const SizedBox(height: 10),
 
-          // T字勘定（表）かグラフかの切り替え
+          // T字勘定モード
           if (_isTableView) ...[
             TAccountTable(
               title: '損益計算書 (P/L)',
@@ -135,24 +145,79 @@ class _PLPageState extends State<PLPage> {
             ),
              const SizedBox(height: 10),
              if (profit >= 0)
-                Text('黒字: ¥${fmt.format(profit)}', style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 16))
+                Text('黒字: ${fmt.format(profit)} 円', style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 16))
              else
-                Text('赤字: ¥${fmt.format(-profit)}', style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 16)),
+                Text('赤字: ${fmt.format(-profit)} 円', style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 16)),
 
           ] else ...[
-            // サマリーカード
-            _buildSummaryCard('今月の純利益', profit, Colors.blue),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(child: _buildSummaryCard('収益', totalIncome, Colors.green, isSmall: true)),
-                const SizedBox(width: 10),
-                Expanded(child: _buildSummaryCard('費用', totalExpense, Colors.red, isSmall: true)),
-              ],
+            // ★サマリー＆分析カード
+            Card(
+              elevation: 2,
+              color: colorScheme.surface,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  children: [
+                    _buildAnalysisRow('売上高', totalIncome, Colors.blue),
+                    const Divider(height: 20),
+                    _buildAnalysisRow('変動費', variableCosts, Colors.orange), // Variable Costs
+                    _buildAnalysisRow('限界利益', marginalProfit, Colors.teal, isBold: true),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: Text('限界利益率: ${(marginalProfitRatio * 100).toStringAsFixed(1)}%', style: TextStyle(fontSize: 12, color: Colors.grey[600]))
+                    ),
+                    const Divider(height: 20),
+                    _buildAnalysisRow('固定費', fixedCosts, Colors.redAccent), // Fixed Costs
+                    const SizedBox(height: 10),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: profit >= 0 ? Colors.green.withValues(alpha: 0.1) : Colors.red.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(8)
+                      ),
+                      child: _buildAnalysisRow('営業利益', profit, profit >= 0 ? Colors.green : Colors.red, isBold: true, size: 20),
+                    ),
+                  ],
+                ),
+              ),
             ),
+            const SizedBox(height: 10),
+            
+            // ★損益分岐点カード
+            if (breakEvenPoint > 0 && breakEvenPoint < 100000000) // 異常値除け
+              Card(
+                elevation: 0,
+                color: Colors.indigo.withValues(alpha: 0.05),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: Colors.indigo.withValues(alpha: 0.2))),
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    children: [
+                      const Row(
+                        children: [
+                          Icon(Icons.balance, size: 20, color: Colors.indigo),
+                          SizedBox(width: 8),
+                          Text('損益分岐点 (目標売上)', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo)),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text('${fmt.format(breakEvenPoint)} 円', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.indigo)),
+                      const SizedBox(height: 4),
+                      Text(
+                        totalIncome >= breakEvenPoint 
+                        ? 'クリアしています！ (達成率 ${(totalIncome/breakEvenPoint*100).toStringAsFixed(0)}%)' 
+                        : 'あと ${fmt.format(breakEvenPoint - totalIncome)} 円で黒字化ラインです',
+                        style: TextStyle(fontSize: 12, color: totalIncome >= breakEvenPoint ? Colors.green : Colors.orange),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            
             const SizedBox(height: 20),
             
-            // 棒グラフ（データがある場合のみ）
+            // グラフ (そのまま)
             if (totalIncome > 0 || totalExpense > 0)
               SizedBox(
                 height: 200,
@@ -173,11 +238,10 @@ class _PLPageState extends State<PLPage> {
               ),
             const SizedBox(height: 20),
             
-            // 予算と実績リスト
             Align(alignment: Alignment.centerLeft, child: Text('予算と実績', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: colorScheme.onSurface))),
             const SizedBox(height: 10),
             
-            // ★ここが修正箇所: さきほど作った sortedExpenses を使う
+            // 予算リスト
             ...sortedExpenses.map((e) {
               final account = e.key;
               final amount = e.value;
@@ -196,10 +260,14 @@ class _PLPageState extends State<PLPage> {
                     children: [
                       Row(
                         children: [
-                          Icon(Icons.shopping_bag, size: 20, color: Colors.redAccent.withValues(alpha: 0.8)),
+                          Icon(
+                            account.costType == 'fixed' ? Icons.lock_clock : Icons.shopping_bag, // 固定費なら鍵アイコン
+                            size: 20, 
+                            color: account.costType == 'fixed' ? Colors.red : Colors.orange
+                          ),
                           const SizedBox(width: 10),
                           Expanded(child: Text(account.name, style: const TextStyle(fontWeight: FontWeight.bold))),
-                          Text('¥${fmt.format(amount)}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                          Text('${fmt.format(amount)} 円', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                         ],
                       ),
                       if (budget > 0) ...[
@@ -214,9 +282,9 @@ class _PLPageState extends State<PLPage> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.end,
                           children: [
-                            Text('予算: ¥${fmt.format(budget)}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                            Text('予算: ${fmt.format(budget)}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
                             const SizedBox(width: 10),
-                            Text(amount > budget ? 'オーバー' : '残: ¥${fmt.format(budget - amount)}', style: TextStyle(fontSize: 12, color: amount > budget ? Colors.red : Colors.indigo)),
+                            Text(amount > budget ? 'オーバー' : '残: ${fmt.format(budget - amount)}', style: TextStyle(fontSize: 12, color: amount > budget ? Colors.red : Colors.indigo)),
                           ],
                         ),
                       ]
@@ -231,20 +299,14 @@ class _PLPageState extends State<PLPage> {
     );
   }
 
-  Widget _buildSummaryCard(String title, int amount, Color color, {bool isSmall = false}) {
+  Widget _buildAnalysisRow(String title, int amount, Color color, {bool isBold = false, double size = 16}) {
     final fmt = NumberFormat("#,###");
-    return Card(
-      elevation: 0,
-      color: color.withValues(alpha: 0.1),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(title, style: TextStyle(color: color, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 4),
-          Text('¥${fmt.format(amount)}', style: TextStyle(fontSize: isSmall ? 20 : 32, fontWeight: FontWeight.bold, color: color)),
-        ]),
-      ),
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(title, style: TextStyle(color: Colors.black87, fontWeight: isBold ? FontWeight.bold : FontWeight.normal, fontSize: size)),
+        Text('${fmt.format(amount)} 円', style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: size)),
+      ],
     );
   }
 }

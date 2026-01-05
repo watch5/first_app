@@ -6,7 +6,7 @@ import '../database.dart';
 class AddTransactionPage extends StatefulWidget {
   final List<Account> accounts;
   final MyDatabase db;
-  final Transaction? transaction; // ★追加: 編集する場合の元データ
+  final Transaction? transaction; // 編集する場合の元データ
 
   const AddTransactionPage({
     super.key, 
@@ -28,7 +28,7 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
   @override
   void initState() {
     super.initState();
-    // ★追加: 編集モードなら初期値をセットする
+    // 編集モードなら初期値をセットする
     if (widget.transaction != null) {
       final t = widget.transaction!;
       _amountController.text = t.amount.toString();
@@ -64,14 +64,15 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
                 itemCount: templates.length,
                 itemBuilder: (context, index) {
                   final t = templates[index];
-                  final debitName = widget.accounts.firstWhere((a) => a.id == t.debitAccountId, orElse: () => const Account(id: -1, name: '?', type: '')).name;
-                  final creditName = widget.accounts.firstWhere((a) => a.id == t.creditAccountId, orElse: () => const Account(id: -1, name: '?', type: '')).name;
+                  // ★修正箇所1: ダミーAccountに costType: 'variable' を追加
+                  final debitName = widget.accounts.firstWhere((a) => a.id == t.debitAccountId, orElse: () => const Account(id: -1, name: '?', type: '', costType: 'variable')).name;
+                  final creditName = widget.accounts.firstWhere((a) => a.id == t.creditAccountId, orElse: () => const Account(id: -1, name: '?', type: '', costType: 'variable')).name;
                   
                   return ListTile(
                     leading: Icon(Icons.bookmark, color: Theme.of(context).colorScheme.primary),
                     title: Text(t.name, style: const TextStyle(fontWeight: FontWeight.bold)),
                     subtitle: Text('$debitName ← $creditName'),
-                    trailing: Text('¥${NumberFormat("#,###").format(t.amount)}'),
+                    trailing: Text('${NumberFormat("#,###").format(t.amount)} 円'),
                     onTap: () {
                       HapticFeedback.mediumImpact();
                       setState(() {
@@ -99,7 +100,7 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(isEditMode ? '取引の編集' : '記帳'), // タイトルを変える
+        title: Text(isEditMode ? '取引の編集' : '記帳'),
         actions: [
            TextButton.icon(
              onPressed: _showTemplates,
@@ -151,11 +152,13 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
             TextField(
               controller: _amountController,
               keyboardType: TextInputType.number,
-              autofocus: !isEditMode, // 編集時はフォーカスしない（誤操作防止）
+              autofocus: !isEditMode, // 編集時はフォーカスしない
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 48, fontWeight: FontWeight.bold, color: colorScheme.primary),
               decoration: const InputDecoration(
-                hintText: '¥0', 
+                hintText: '0', 
+                suffixText: '円', // ★修正箇所2: 「円」を表示
+                suffixStyle: TextStyle(fontSize: 20, color: Colors.grey),
                 border: InputBorder.none,
                 hintStyle: TextStyle(color: Colors.white24), 
               ),
@@ -217,14 +220,12 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
                   HapticFeedback.mediumImpact();
                   final amount = int.tryParse(_amountController.text);
                   if (amount != null && _debitId != null && _creditId != null) {
-                    // ★変更: 戻り値を作成
                     final result = {
                       'debitId': _debitId, 
                       'creditId': _creditId, 
                       'amount': amount, 
                       'date': _selectedDate
                     };
-                    // 編集モードならIDも含める
                     if (isEditMode) {
                       result['id'] = widget.transaction!.id;
                     }
@@ -244,8 +245,10 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
 
   Widget _buildAccountSelector(int? value, ValueChanged<int?> onChanged) {
     final colorScheme = Theme.of(context).colorScheme;
+    
+    // ★修正箇所3: ここでも costType: 'variable' を追加してエラー回避
     final selectedAccount = value != null 
-        ? widget.accounts.firstWhere((a) => a.id == value, orElse: () => const Account(id: -1, name: '', type: '')) 
+        ? widget.accounts.firstWhere((a) => a.id == value, orElse: () => const Account(id: -1, name: '', type: '', costType: 'variable')) 
         : null;
 
     IconData icon;

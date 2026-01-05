@@ -150,7 +150,7 @@ class _MainScreenState extends State<MainScreen> {
   @override
   Widget build(BuildContext context) {
     final List<Widget> screens = [
-      TransactionListPage(
+      TransactionListScreen(
         transactions: _transactions,
         accounts: _accounts,
         onDelete: _deleteTransaction,
