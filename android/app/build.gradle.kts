@@ -16,7 +16,7 @@ plugins {
 
 android {
     // あなたのパッケージ名に合わせて自動設定されているはずです
-    namespace = "com.example.first_app" 
+    namespace = "com.mark.dualy" 
     compileSdk = flutter.compileSdkVersion
 
     compileOptions {
@@ -30,40 +30,13 @@ android {
 
     defaultConfig {
         // ここもあなたのパッケージ名に合わせてください
-        applicationId = "com.example.first_app" 
+        applicationId = "com.mark.dualy"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
 
-signingConfigs {
-        // もし key.properties が読み込めていれば設定を適用する
-        if (keystorePropertiesFile.exists()) {
-            create("release") {
-                keyAlias = keystoreProperties["keyAlias"] as String
-                keyPassword = keystoreProperties["keyPassword"] as String
-                storeFile = keystoreProperties["storeFile"]?.let { file(it) }
-                storePassword = keystoreProperties["storePassword"] as String
-            }
-        }
-    }
-
-    buildTypes {
-        getByName("release") {
-            // key.properties がある時だけ署名を有効にする
-            if (keystorePropertiesFile.exists()) {
-                signingConfig = signingConfigs.getByName("release")
-            }
-            
-            isMinifyEnabled = false
-            isShrinkResources = false
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
-            )
-        }
-    }
 
 
 }
