@@ -1,5 +1,7 @@
 package com.mark.dualy
 
-import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.android.FlutterFragmentActivity // ★変更
 
-class MainActivity : FlutterActivity()
+// ★ FlutterActivity ではなく FlutterFragmentActivity にする
+class MainActivity: FlutterFragmentActivity() {
+}

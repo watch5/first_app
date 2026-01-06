@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:intl/date_symbol_data_local.dart';
-import 'package:google_fonts/google_fonts.dart'; // ★追加: フォント用パッケージ
+import 'package:google_fonts/google_fonts.dart'; 
+import 'screens/auth_page.dart'; // ★追加済み
 
 import 'database.dart';
 
@@ -31,28 +32,29 @@ class MyApp extends StatelessWidget {
       title: 'Dualy',
       debugShowCheckedModeBanner: false,
       
-      // ★ライトモードのテーマ設定（フォント適用）
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo, brightness: Brightness.light),
         useMaterial3: true,
-        // これを入れるだけでアプリ全体の文字が Noto Sans JP になります
         textTheme: GoogleFonts.notoSansJpTextTheme(),
       ),
 
-      // ★ダークモードのテーマ設定（フォント適用）
       darkTheme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo, brightness: Brightness.dark),
         useMaterial3: true,
-        // ダークモード用の文字色（白）をベースにフォントを適用する書き方
         textTheme: GoogleFonts.notoSansJpTextTheme(ThemeData.dark().textTheme),
       ),
 
       themeMode: ThemeMode.system, 
-      home: const MainScreen(),
+      
+      // ★ここを修正しました！
+      // アプリ起動時にまず「認証画面 (AuthPage)」を表示します。
+      // 認証が成功すると、AuthPageの中で MainScreen に移動する仕組みになっています。
+      home: const AuthPage(), 
     );
   }
 }
 
+// ↓ MainScreenクラスなどはそのままでOKです（変更なし）
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
   @override

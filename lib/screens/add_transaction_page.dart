@@ -1,18 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart'; // ★追加
 import '../database.dart';
 
 class AddTransactionPage extends StatefulWidget {
   final List<Account> accounts;
   final MyDatabase db;
-  final Transaction? transaction; // 編集する場合の元データ
+  final Transaction? transaction;
 
   const AddTransactionPage({
     super.key, 
     required this.accounts, 
     required this.db,
-    this.transaction, // nullなら新規作成、あれば編集モード
+    this.transaction, 
   });
 
   @override
@@ -28,18 +29,53 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
   @override
   void initState() {
     super.initState();
-    // 編集モードなら初期値をセットする
+    _initData();
+  }
+
+  // ★初期データをロードする処理
+  Future<void> _initData() async {
+    // 編集モードなら、元のデータをセットして終わり
     if (widget.transaction != null) {
       final t = widget.transaction!;
-      _amountController.text = t.amount.toString();
-      _debitId = t.debitAccountId;
-      _creditId = t.creditAccountId;
-      _selectedDate = t.date;
+      setState(() {
+        _amountController.text = t.amount.toString();
+        _debitId = t.debitAccountId;
+        _creditId = t.creditAccountId;
+        _selectedDate = t.date;
+      });
+      return;
     }
+
+    // ★新規作成モードなら、前回の履歴を読み込む！
+    final prefs = await SharedPreferences.getInstance();
+    final lastDebit = prefs.getInt('last_debit_id');
+    final lastCredit = prefs.getInt('last_credit_id');
+
+    if (mounted) {
+      setState(() {
+        // 保存されたIDが、現在の科目リストに存在するか確認してからセット
+        if (widget.accounts.any((a) => a.id == lastDebit)) {
+          _debitId = lastDebit;
+        }
+        if (widget.accounts.any((a) => a.id == lastCredit)) {
+          _creditId = lastCredit;
+        }
+      });
+    }
+  }
+
+  // ★選択した科目をスマホに保存する処理
+  Future<void> _saveLastSelection() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (_debitId != null) await prefs.setInt('last_debit_id', _debitId!);
+    if (_creditId != null) await prefs.setInt('last_credit_id', _creditId!);
   }
 
   void _showTemplates() async {
     HapticFeedback.lightImpact();
+    // キーボードを閉じる
+    FocusScope.of(context).unfocus();
+    
     final templates = await widget.db.getAllTemplates();
     if (!mounted) return;
 
@@ -64,7 +100,6 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
                 itemCount: templates.length,
                 itemBuilder: (context, index) {
                   final t = templates[index];
-                  // ダミーAccountに costType: 'variable' を追加して安全策
                   final debitName = widget.accounts.firstWhere((a) => a.id == t.debitAccountId, orElse: () => const Account(id: -1, name: '?', type: '', costType: 'variable')).name;
                   final creditName = widget.accounts.firstWhere((a) => a.id == t.creditAccountId, orElse: () => const Account(id: -1, name: '?', type: '', costType: 'variable')).name;
                   
@@ -72,7 +107,6 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
                     leading: Icon(Icons.bookmark, color: Theme.of(context).colorScheme.primary),
                     title: Text(t.name, style: const TextStyle(fontWeight: FontWeight.bold)),
                     subtitle: Text('$debitName ← $creditName'),
-                    // ★改善点2: テンプレート一覧では金額にカンマを入れる（既に実装済み）
                     trailing: Text('${NumberFormat("#,###").format(t.amount)} 円'),
                     onTap: () {
                       HapticFeedback.mediumImpact();
@@ -97,11 +131,10 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final isEditMode = widget.transaction != null; // 編集モードかどうか
+    final isEditMode = widget.transaction != null;
 
-    // ★改善点1: GestureDetectorで画面全体を包み、タップでキーボードを閉じる
     return GestureDetector(
-      onTap: () => FocusScope.of(context).unfocus(), // これがキーボードを閉じる魔法のコード
+      onTap: () => FocusScope.of(context).unfocus(),
       child: Scaffold(
         appBar: AppBar(
           title: Text(isEditMode ? '取引の編集' : '記帳'),
@@ -121,7 +154,6 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
               GestureDetector(
                 onTap: () async {
                   HapticFeedback.lightImpact();
-                  // キーボードが出ていたら閉じてからカレンダーを出す
                   FocusScope.of(context).unfocus(); 
                   final date = await showDatePicker(
                     context: context,
@@ -158,7 +190,7 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
               TextField(
                 controller: _amountController,
                 keyboardType: TextInputType.number,
-                autofocus: !isEditMode, // 編集時はフォーカスしない
+                autofocus: !isEditMode,
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 48, fontWeight: FontWeight.bold, color: colorScheme.primary),
                 decoration: const InputDecoration(
@@ -175,7 +207,6 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
               // 左右カード
               Card(
                 elevation: 4,
-                // Flutterのバージョンによっては withValues がないので withOpacity にしています（安全策）
                 shadowColor: colorScheme.shadow.withOpacity(0.2),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                 color: colorScheme.surfaceContainerLow, 
@@ -223,13 +254,16 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
                   style: FilledButton.styleFrom(
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))
                   ),
-                  onPressed: () {
+                  onPressed: () async { // asyncにする
                     HapticFeedback.mediumImpact();
-                    // キーボードを閉じる
                     FocusScope.of(context).unfocus();
                     
                     final amount = int.tryParse(_amountController.text);
                     if (amount != null && _debitId != null && _creditId != null) {
+                      
+                      // ★保存成功なら、次回のために科目を記憶しておく
+                      await _saveLastSelection();
+
                       final result = {
                         'debitId': _debitId, 
                         'creditId': _creditId, 
@@ -239,7 +273,7 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
                       if (isEditMode) {
                         result['id'] = widget.transaction!.id;
                       }
-                      Navigator.of(context).pop(result);
+                      if (context.mounted) Navigator.of(context).pop(result);
                     } else {
                       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('金額と科目を入力してください')));
                     }
@@ -256,8 +290,6 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
 
   Widget _buildAccountSelector(int? value, ValueChanged<int?> onChanged) {
     final colorScheme = Theme.of(context).colorScheme;
-    
-    // 安全策: costType: 'variable' を追加
     final selectedAccount = value != null 
         ? widget.accounts.firstWhere((a) => a.id == value, orElse: () => const Account(id: -1, name: '', type: '', costType: 'variable')) 
         : null;

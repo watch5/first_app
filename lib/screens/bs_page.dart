@@ -1,4 +1,4 @@
-import 'package:fl_chart/fl_chart.dart'; // グラフ用
+// グラフ用
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
