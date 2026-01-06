@@ -2,16 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:google_fonts/google_fonts.dart'; // ★追加: フォント用パッケージ
+
 import 'database.dart';
 
-// ★整理された各画面・部品をインポート
+// 各画面・部品をインポート
 import 'screens/transaction_list_page.dart';
 import 'screens/pl_page.dart';
 import 'screens/bs_page.dart';
 import 'screens/add_transaction_page.dart';
 import 'screens/account_settings_page.dart';
-import 'screens/template_settings_page.dart'; // 追加
-import 'widgets/ad_banner.dart'; // 追加
+import 'screens/template_settings_page.dart';
+import 'widgets/ad_banner.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -28,14 +30,23 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'Dualy',
       debugShowCheckedModeBanner: false,
+      
+      // ★ライトモードのテーマ設定（フォント適用）
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo, brightness: Brightness.light),
         useMaterial3: true,
+        // これを入れるだけでアプリ全体の文字が Noto Sans JP になります
+        textTheme: GoogleFonts.notoSansJpTextTheme(),
       ),
+
+      // ★ダークモードのテーマ設定（フォント適用）
       darkTheme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo, brightness: Brightness.dark),
         useMaterial3: true,
+        // ダークモード用の文字色（白）をベースにフォントを適用する書き方
+        textTheme: GoogleFonts.notoSansJpTextTheme(ThemeData.dark().textTheme),
       ),
+
       themeMode: ThemeMode.system, 
       home: const MainScreen(),
     );
@@ -137,7 +148,6 @@ class _MainScreenState extends State<MainScreen> {
             subtitle: const Text('よく使う取引（家賃など）を登録'),
             onTap: () async {
               Navigator.pop(ctx);
-              // ★別ファイルにした画面へ遷移
               await Navigator.of(context).push(MaterialPageRoute(builder: (context) => TemplateSettingsPage(db: _db)));
             },
           ),
@@ -170,7 +180,7 @@ class _MainScreenState extends State<MainScreen> {
       body: Column(
         children: [
           Expanded(child: screens[_selectedIndex]),
-          const AdBanner(), // ★別ファイルにした広告ウィジェット
+          const AdBanner(), 
         ],
       ),
       bottomNavigationBar: NavigationBar(
