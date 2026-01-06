@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
+import 'dart:io';
 
 class AdBanner extends StatefulWidget {
   const AdBanner({super.key});
@@ -13,7 +14,10 @@ class _AdBannerState extends State<AdBanner> {
   bool _isLoaded = false;
 
   // テスト用ID (リリース時は本物に書き換えます)
-  final String _adUnitId = 'ca-app-pub-3940256099942544/6300978111';
+final String _adUnitId = Platform.isAndroid
+      // ↓ ここを、AdMobの管理画面にある「ca-app-pub-...」から始まる本番IDに書き換え
+      ? 'ca-app-pub-6460861107218876~5241379429' 
+      : 'ca-app-pub-3940256099942544/2934735716'; // iOSはテスト用のままでOK
 
   @override
   void initState() {
