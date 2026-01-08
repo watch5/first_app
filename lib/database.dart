@@ -35,13 +35,23 @@ class Templates extends Table {
   IntColumn get amount => integer()();
 }
 
+// --- 4. ★追加: 日別予算テーブル ---
+class DailyBudgets extends Table {
+  DateTimeColumn get date => dateTime()(); // 日付
+  IntColumn get amount => integer()();     // その日の予算（食費などの変動費）
+  
+  @override
+  Set<Column> get primaryKey => {date};    // 日付を一意のキーにする
+}
+
 // --- データベース本体 ---
-@DriftDatabase(tables: [Accounts, Transactions, Templates]) 
+// ★DailyBudgetsを追加
+@DriftDatabase(tables: [Accounts, Transactions, Templates, DailyBudgets]) 
 class MyDatabase extends _$MyDatabase {
   MyDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5; // ★バージョンを 5 に更新
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -56,15 +66,18 @@ class MyDatabase extends _$MyDatabase {
       if (from < 4) {
         await m.addColumn(accounts, accounts.costType);
       }
+      // ★バージョン5への移行処理を追加
+      if (from < 5) {
+        await m.createTable(dailyBudgets);
+      }
     },
   );
 
-  // --- クエリ ---
+  // --- クエリ群 ---
 
-  // Accounts
+  // === Accounts ===
   Future<List<Account>> getAllAccounts() => select(accounts).get();
   
-  // 4つ目の引数 costType を追加
   Future<int> addAccount(String name, String type, int? budget, String costType) {
     return into(accounts).insert(AccountsCompanion(
       name: Value(name),
@@ -74,7 +87,6 @@ class MyDatabase extends _$MyDatabase {
     ));
   }
   
-  // 費用区分を更新するメソッド
   Future<void> updateAccountCostType(int id, String costType) {
     return (update(accounts)..where((a) => a.id.equals(id))).write(
       AccountsCompanion(costType: Value(costType)),
@@ -87,7 +99,6 @@ class MyDatabase extends _$MyDatabase {
     );
   }
   
-  // 科目を削除する（関連する取引データも全て削除する）
   Future<void> deleteAccount(int id) {
     return transaction(() async {
       await (delete(transactions)..where((t) => 
@@ -97,8 +108,9 @@ class MyDatabase extends _$MyDatabase {
     });
   }
 
-  // Transactions
+  // === Transactions ===
   Future<List<Transaction>> getTransactions() => select(transactions).get();
+  
   Future<int> addTransaction(int debitId, int creditId, int amount, DateTime date) {
     return into(transactions).insert(TransactionsCompanion(
       debitAccountId: Value(debitId),
@@ -108,7 +120,6 @@ class MyDatabase extends _$MyDatabase {
     ));
   }
   
-  // 取引データの更新
   Future<void> updateTransaction(int id, int debitId, int creditId, int amount, DateTime date) {
     return (update(transactions)..where((t) => t.id.equals(id))).write(
       TransactionsCompanion(
@@ -124,8 +135,9 @@ class MyDatabase extends _$MyDatabase {
     return (delete(transactions)..where((t) => t.id.equals(id))).go();
   }
 
-  // Templates
+  // === Templates ===
   Future<List<Template>> getAllTemplates() => select(templates).get();
+  
   Future<int> addTemplate(String name, int debitId, int creditId, int amount) {
     return into(templates).insert(TemplatesCompanion(
       name: Value(name),
@@ -134,11 +146,12 @@ class MyDatabase extends _$MyDatabase {
       amount: Value(amount),
     ));
   }
+  
   Future<void> deleteTemplate(int id) {
     return (delete(templates)..where((t) => t.id.equals(id))).go();
   }
 
-  // --- ★追加: AI予測（スマート予測）機能 ---
+  // === AI予測（スマート予測）機能 ===
   Future<int?> getMostFrequentCreditId(int debitId) async {
     final result = await customSelect(
       'SELECT credit_account_id, COUNT(*) as cnt '
@@ -157,7 +170,50 @@ class MyDatabase extends _$MyDatabase {
     return null;
   }
 
-  // ★初期データ投入
+  // === ★追加: 資金繰り・日別予算機能 ===
+
+  // 指定期間の日別予算を取得
+  Future<List<DailyBudget>> getDailyBudgets(DateTime start, DateTime end) {
+    return (select(dailyBudgets)
+      ..where((t) => t.date.isBetweenValues(start, end))
+      ..orderBy([(t) => OrderingTerm(expression: t.date)])
+    ).get();
+  }
+
+  // 日別予算を保存（なければ挿入、あれば更新）
+  Future<void> setDailyBudget(DateTime date, int amount) {
+    return into(dailyBudgets).insertOnConflictUpdate(DailyBudgetsCompanion(
+      date: Value(date),
+      amount: Value(amount),
+    ));
+  }
+  
+  // 指定期間の未来の取引を取得（資金繰り予測用）
+  Future<List<Transaction>> getFutureTransactions(DateTime start, DateTime end) {
+     return (select(transactions)
+      ..where((t) => t.date.isBetweenValues(start, end))
+    ).get();
+  }
+  
+  // 現在の「資産」合計を取得（スタート地点用）
+  Future<int> getCurrentAssetBalance() async {
+    final assetAccounts = await (select(accounts)..where((a) => a.type.equals('asset'))).get();
+    if (assetAccounts.isEmpty) return 0;
+    
+    final assetIds = assetAccounts.map((a) => a.id).toList();
+    
+    // 全取引から資産の増減を計算
+    final txs = await select(transactions).get();
+    int total = 0;
+    for (var t in txs) {
+      if (assetIds.contains(t.debitAccountId)) total += t.amount;
+      if (assetIds.contains(t.creditAccountId)) total -= t.amount;
+    }
+    return total;
+  }
+
+  // === 初期データ・デバッグデータ投入 ===
+
   Future<void> seedDefaultAccounts() async {
     final allAccounts = await getAllAccounts();
     if (allAccounts.isEmpty) {
@@ -194,14 +250,12 @@ class MyDatabase extends _$MyDatabase {
     }
   }
 
-  // --- ★追加: デバッグ用データ投入 (データが空の場合のみ実行) ---
   Future<void> seedDebugData() async {
     final tx = await getTransactions();
-    if (tx.isNotEmpty) return; // すでにデータがあれば何もしない
+    if (tx.isNotEmpty) return; 
 
     final allAccounts = await getAllAccounts();
     
-    // 名前からIDを取得するヘルパー関数
     int getId(String name) {
       try {
         return allAccounts.firstWhere((a) => a.name == name).id;
@@ -210,119 +264,78 @@ class MyDatabase extends _$MyDatabase {
       }
     }
 
-    // 日付生成ヘルパー (今月を基準にする)
     final now = DateTime.now();
     DateTime date(int day, {int monthOffset = 0}) {
       return DateTime(now.year, now.month + monthOffset, day);
     }
 
-    // バッチ処理で一括登録
     await batch((batch) {
-      // --- 1. 前月の収支 (確定したデータとして) ---
-      
-      // 給料 (25日)
+      // 1. 前月の収支
       batch.insert(transactions, TransactionsCompanion.insert(
-        debitAccountId: getId('銀行口座'),
-        creditAccountId: getId('給料'),
-        amount: 280000,
-        date: date(25, monthOffset: -1),
+        debitAccountId: getId('銀行口座'), creditAccountId: getId('給料'),
+        amount: 280000, date: date(25, monthOffset: -1),
+      ));
+      batch.insert(transactions, TransactionsCompanion.insert(
+        debitAccountId: getId('家賃'), creditAccountId: getId('銀行口座'),
+        amount: 70000, date: date(27, monthOffset: -1),
+      ));
+      batch.insert(transactions, TransactionsCompanion.insert(
+        debitAccountId: getId('電気代'), creditAccountId: getId('クレジットカード'),
+        amount: 5400, date: date(27, monthOffset: -1),
+      ));
+      batch.insert(transactions, TransactionsCompanion.insert(
+        debitAccountId: getId('通信費'), creditAccountId: getId('クレジットカード'),
+        amount: 4980, date: date(27, monthOffset: -1),
       ));
 
-      // 家賃 (27日引き落とし)
-      batch.insert(transactions, TransactionsCompanion.insert(
-        debitAccountId: getId('家賃'),
-        creditAccountId: getId('銀行口座'),
-        amount: 70000,
-        date: date(27, monthOffset: -1),
-      ));
-
-      // 光熱費・通信費
-      batch.insert(transactions, TransactionsCompanion.insert(
-        debitAccountId: getId('電気代'),
-        creditAccountId: getId('クレジットカード'),
-        amount: 5400,
-        date: date(27, monthOffset: -1),
-      ));
-      batch.insert(transactions, TransactionsCompanion.insert(
-        debitAccountId: getId('通信費'),
-        creditAccountId: getId('クレジットカード'),
-        amount: 4980,
-        date: date(27, monthOffset: -1),
-      ));
-
-      // --- 2. 日々の生活費 (ランダム感を出す) ---
-      
-      // 食費・コンビニ (PayPay払いが多い想定)
+      // 2. 日々の生活費
       final foodDays = [2, 5, 8, 12, 15, 19, 22, 26];
       for (var d in foodDays) {
          batch.insert(transactions, TransactionsCompanion.insert(
-          debitAccountId: getId('食費'),
-          creditAccountId: getId('PayPay'),
-          amount: 800 + (d * 10), // 適当に金額をバラつかせる
-          date: date(d),
+          debitAccountId: getId('食費'), creditAccountId: getId('PayPay'),
+          amount: 800 + (d * 10), date: date(d),
         ));
       }
 
-      // 外食 (週末にちょっと贅沢)
       batch.insert(transactions, TransactionsCompanion.insert(
-        debitAccountId: getId('外食'),
-        creditAccountId: getId('クレジットカード'),
-        amount: 4500,
-        date: date(10), // 前半の週末
+        debitAccountId: getId('外食'), creditAccountId: getId('クレジットカード'),
+        amount: 4500, date: date(10), 
       ));
       batch.insert(transactions, TransactionsCompanion.insert(
-        debitAccountId: getId('外食'),
-        creditAccountId: getId('現金'), // 割り勘で現金払いした設定
-        amount: 3000,
-        date: date(24), 
+        debitAccountId: getId('外食'), creditAccountId: getId('現金'),
+        amount: 3000, date: date(24), 
       ));
 
-      // 日用品
       batch.insert(transactions, TransactionsCompanion.insert(
-        debitAccountId: getId('日用品'),
-        creditAccountId: getId('PayPay'),
-        amount: 2400,
-        date: date(5),
+        debitAccountId: getId('日用品'), creditAccountId: getId('PayPay'),
+        amount: 2400, date: date(5),
       ));
 
-      // 交通費 (Suicaチャージと利用)
       batch.insert(transactions, TransactionsCompanion.insert(
-        debitAccountId: getId('Suica/PASMO'), 
-        creditAccountId: getId('現金'),
-        amount: 5000,
-        date: date(1),
+        debitAccountId: getId('Suica/PASMO'), creditAccountId: getId('現金'),
+        amount: 5000, date: date(1),
       ));
       batch.insert(transactions, TransactionsCompanion.insert(
-        debitAccountId: getId('交通費'),
-        creditAccountId: getId('Suica/PASMO'),
-        amount: 800,
-        date: date(3),
+        debitAccountId: getId('交通費'), creditAccountId: getId('Suica/PASMO'),
+        amount: 800, date: date(3),
       ));
       batch.insert(transactions, TransactionsCompanion.insert(
-        debitAccountId: getId('交通費'),
-        creditAccountId: getId('Suica/PASMO'),
-        amount: 1200,
-        date: date(14),
+        debitAccountId: getId('交通費'), creditAccountId: getId('Suica/PASMO'),
+        amount: 1200, date: date(14),
       ));
 
-      // 趣味
       batch.insert(transactions, TransactionsCompanion.insert(
-        debitAccountId: getId('趣味・娯楽'),
-        creditAccountId: getId('クレジットカード'),
-        amount: 12800,
-        date: date(15),
+        debitAccountId: getId('趣味・娯楽'), creditAccountId: getId('クレジットカード'),
+        amount: 12800, date: date(15),
       ));
       
-      // 医療費
       batch.insert(transactions, TransactionsCompanion.insert(
-        debitAccountId: getId('医療費'),
-        creditAccountId: getId('現金'),
-        amount: 1200,
-        date: date(20),
+        debitAccountId: getId('医療費'), creditAccountId: getId('現金'),
+        amount: 1200, date: date(20),
       ));
     });
   }
-} // ★ここまでがMyDatabaseクラスです (このカッコの外にメソッドを書くとエラーになります)
+}
 
 LazyDatabase _openConnection() {
   return LazyDatabase(() async {

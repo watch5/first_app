@@ -1074,12 +1074,221 @@ class TemplatesCompanion extends UpdateCompanion<Template> {
   }
 }
 
+class $DailyBudgetsTable extends DailyBudgets
+    with TableInfo<$DailyBudgetsTable, DailyBudget> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $DailyBudgetsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _dateMeta = const VerificationMeta('date');
+  @override
+  late final GeneratedColumn<DateTime> date = GeneratedColumn<DateTime>(
+    'date',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _amountMeta = const VerificationMeta('amount');
+  @override
+  late final GeneratedColumn<int> amount = GeneratedColumn<int>(
+    'amount',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [date, amount];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'daily_budgets';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<DailyBudget> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('date')) {
+      context.handle(
+        _dateMeta,
+        date.isAcceptableOrUnknown(data['date']!, _dateMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_dateMeta);
+    }
+    if (data.containsKey('amount')) {
+      context.handle(
+        _amountMeta,
+        amount.isAcceptableOrUnknown(data['amount']!, _amountMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_amountMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {date};
+  @override
+  DailyBudget map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return DailyBudget(
+      date: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}date'],
+      )!,
+      amount: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}amount'],
+      )!,
+    );
+  }
+
+  @override
+  $DailyBudgetsTable createAlias(String alias) {
+    return $DailyBudgetsTable(attachedDatabase, alias);
+  }
+}
+
+class DailyBudget extends DataClass implements Insertable<DailyBudget> {
+  final DateTime date;
+  final int amount;
+  const DailyBudget({required this.date, required this.amount});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['date'] = Variable<DateTime>(date);
+    map['amount'] = Variable<int>(amount);
+    return map;
+  }
+
+  DailyBudgetsCompanion toCompanion(bool nullToAbsent) {
+    return DailyBudgetsCompanion(date: Value(date), amount: Value(amount));
+  }
+
+  factory DailyBudget.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return DailyBudget(
+      date: serializer.fromJson<DateTime>(json['date']),
+      amount: serializer.fromJson<int>(json['amount']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'date': serializer.toJson<DateTime>(date),
+      'amount': serializer.toJson<int>(amount),
+    };
+  }
+
+  DailyBudget copyWith({DateTime? date, int? amount}) =>
+      DailyBudget(date: date ?? this.date, amount: amount ?? this.amount);
+  DailyBudget copyWithCompanion(DailyBudgetsCompanion data) {
+    return DailyBudget(
+      date: data.date.present ? data.date.value : this.date,
+      amount: data.amount.present ? data.amount.value : this.amount,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DailyBudget(')
+          ..write('date: $date, ')
+          ..write('amount: $amount')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(date, amount);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is DailyBudget &&
+          other.date == this.date &&
+          other.amount == this.amount);
+}
+
+class DailyBudgetsCompanion extends UpdateCompanion<DailyBudget> {
+  final Value<DateTime> date;
+  final Value<int> amount;
+  final Value<int> rowid;
+  const DailyBudgetsCompanion({
+    this.date = const Value.absent(),
+    this.amount = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  DailyBudgetsCompanion.insert({
+    required DateTime date,
+    required int amount,
+    this.rowid = const Value.absent(),
+  }) : date = Value(date),
+       amount = Value(amount);
+  static Insertable<DailyBudget> custom({
+    Expression<DateTime>? date,
+    Expression<int>? amount,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (date != null) 'date': date,
+      if (amount != null) 'amount': amount,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  DailyBudgetsCompanion copyWith({
+    Value<DateTime>? date,
+    Value<int>? amount,
+    Value<int>? rowid,
+  }) {
+    return DailyBudgetsCompanion(
+      date: date ?? this.date,
+      amount: amount ?? this.amount,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (date.present) {
+      map['date'] = Variable<DateTime>(date.value);
+    }
+    if (amount.present) {
+      map['amount'] = Variable<int>(amount.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DailyBudgetsCompanion(')
+          ..write('date: $date, ')
+          ..write('amount: $amount, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$MyDatabase extends GeneratedDatabase {
   _$MyDatabase(QueryExecutor e) : super(e);
   $MyDatabaseManager get managers => $MyDatabaseManager(this);
   late final $AccountsTable accounts = $AccountsTable(this);
   late final $TransactionsTable transactions = $TransactionsTable(this);
   late final $TemplatesTable templates = $TemplatesTable(this);
+  late final $DailyBudgetsTable dailyBudgets = $DailyBudgetsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -1088,6 +1297,7 @@ abstract class _$MyDatabase extends GeneratedDatabase {
     accounts,
     transactions,
     templates,
+    dailyBudgets,
   ];
 }
 
@@ -1671,6 +1881,149 @@ typedef $$TemplatesTableProcessedTableManager =
       Template,
       PrefetchHooks Function()
     >;
+typedef $$DailyBudgetsTableCreateCompanionBuilder =
+    DailyBudgetsCompanion Function({
+      required DateTime date,
+      required int amount,
+      Value<int> rowid,
+    });
+typedef $$DailyBudgetsTableUpdateCompanionBuilder =
+    DailyBudgetsCompanion Function({
+      Value<DateTime> date,
+      Value<int> amount,
+      Value<int> rowid,
+    });
+
+class $$DailyBudgetsTableFilterComposer
+    extends Composer<_$MyDatabase, $DailyBudgetsTable> {
+  $$DailyBudgetsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<DateTime> get date => $composableBuilder(
+    column: $table.date,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get amount => $composableBuilder(
+    column: $table.amount,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$DailyBudgetsTableOrderingComposer
+    extends Composer<_$MyDatabase, $DailyBudgetsTable> {
+  $$DailyBudgetsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<DateTime> get date => $composableBuilder(
+    column: $table.date,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get amount => $composableBuilder(
+    column: $table.amount,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$DailyBudgetsTableAnnotationComposer
+    extends Composer<_$MyDatabase, $DailyBudgetsTable> {
+  $$DailyBudgetsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<DateTime> get date =>
+      $composableBuilder(column: $table.date, builder: (column) => column);
+
+  GeneratedColumn<int> get amount =>
+      $composableBuilder(column: $table.amount, builder: (column) => column);
+}
+
+class $$DailyBudgetsTableTableManager
+    extends
+        RootTableManager<
+          _$MyDatabase,
+          $DailyBudgetsTable,
+          DailyBudget,
+          $$DailyBudgetsTableFilterComposer,
+          $$DailyBudgetsTableOrderingComposer,
+          $$DailyBudgetsTableAnnotationComposer,
+          $$DailyBudgetsTableCreateCompanionBuilder,
+          $$DailyBudgetsTableUpdateCompanionBuilder,
+          (
+            DailyBudget,
+            BaseReferences<_$MyDatabase, $DailyBudgetsTable, DailyBudget>,
+          ),
+          DailyBudget,
+          PrefetchHooks Function()
+        > {
+  $$DailyBudgetsTableTableManager(_$MyDatabase db, $DailyBudgetsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$DailyBudgetsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$DailyBudgetsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$DailyBudgetsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<DateTime> date = const Value.absent(),
+                Value<int> amount = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => DailyBudgetsCompanion(
+                date: date,
+                amount: amount,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required DateTime date,
+                required int amount,
+                Value<int> rowid = const Value.absent(),
+              }) => DailyBudgetsCompanion.insert(
+                date: date,
+                amount: amount,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$DailyBudgetsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$MyDatabase,
+      $DailyBudgetsTable,
+      DailyBudget,
+      $$DailyBudgetsTableFilterComposer,
+      $$DailyBudgetsTableOrderingComposer,
+      $$DailyBudgetsTableAnnotationComposer,
+      $$DailyBudgetsTableCreateCompanionBuilder,
+      $$DailyBudgetsTableUpdateCompanionBuilder,
+      (
+        DailyBudget,
+        BaseReferences<_$MyDatabase, $DailyBudgetsTable, DailyBudget>,
+      ),
+      DailyBudget,
+      PrefetchHooks Function()
+    >;
 
 class $MyDatabaseManager {
   final _$MyDatabase _db;
@@ -1681,4 +2034,6 @@ class $MyDatabaseManager {
       $$TransactionsTableTableManager(_db, _db.transactions);
   $$TemplatesTableTableManager get templates =>
       $$TemplatesTableTableManager(_db, _db.templates);
+  $$DailyBudgetsTableTableManager get dailyBudgets =>
+      $$DailyBudgetsTableTableManager(_db, _db.dailyBudgets);
 }

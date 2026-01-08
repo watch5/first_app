@@ -3,14 +3,15 @@ import 'package:flutter/services.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:google_fonts/google_fonts.dart'; 
-import 'screens/auth_page.dart'; // ★追加済み
 
 import 'database.dart';
+import 'screens/auth_page.dart'; 
 
 // 各画面・部品をインポート
 import 'screens/transaction_list_page.dart';
 import 'screens/pl_page.dart';
 import 'screens/bs_page.dart';
+import 'screens/forecast_page.dart'; // ★追加: 資金繰り画面
 import 'screens/add_transaction_page.dart';
 import 'screens/account_settings_page.dart';
 import 'screens/template_settings_page.dart';
@@ -46,15 +47,12 @@ class MyApp extends StatelessWidget {
 
       themeMode: ThemeMode.system, 
       
-      // ★ここを修正しました！
-      // アプリ起動時にまず「認証画面 (AuthPage)」を表示します。
-      // 認証が成功すると、AuthPageの中で MainScreen に移動する仕組みになっています。
+      // アプリ起動時はまず認証画面を表示
       home: const AuthPage(), 
     );
   }
 }
 
-// ↓ MainScreenクラスなどはそのままでOKです（変更なし）
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
   @override
@@ -73,15 +71,10 @@ class _MainScreenState extends State<MainScreen> {
     _initData();
   }
 
-// _MainScreenState クラス内の _initData メソッドを修正
-
   Future<void> _initData() async {
     await _db.seedDefaultAccounts();
-    
-    // ★ここに追加！
-    // 開発中のデバッグデータを投入 (すでにデータがあれば無視されます)
+    // デバッグデータ投入 (データが空の場合のみ)
     await _db.seedDebugData();
-    
     await _loadData();
   }
   
@@ -168,6 +161,7 @@ class _MainScreenState extends State<MainScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // 画面のリスト
     final List<Widget> screens = [
       TransactionListScreen(
         transactions: _transactions,
@@ -177,6 +171,7 @@ class _MainScreenState extends State<MainScreen> {
       ),
       PLPage(transactions: _transactions, accounts: _accounts),
       BSPage(transactions: _transactions, accounts: _accounts),
+      ForecastPage(db: _db), // ★追加: 資金繰り画面
     ];
 
     return Scaffold(
@@ -202,8 +197,10 @@ class _MainScreenState extends State<MainScreen> {
           NavigationDestination(icon: Icon(Icons.list_alt), label: '明細'),
           NavigationDestination(icon: Icon(Icons.show_chart), label: '損益(P/L)'),
           NavigationDestination(icon: Icon(Icons.account_balance), label: '資産(B/S)'),
+          NavigationDestination(icon: Icon(Icons.timeline), label: '資金繰り'), // ★追加
         ],
       ),
+      // 記帳ボタンは「明細」タブ(index=0)のときだけ表示
       floatingActionButton: _selectedIndex == 0
           ? FloatingActionButton.extended(
               onPressed: () async {
