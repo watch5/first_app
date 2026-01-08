@@ -35,7 +35,6 @@ class _ForecastPageState extends State<ForecastPage> {
     int currentBalance = await widget.db.getCurrentAssetBalance();
 
     // 2. 未来の取引（家賃や給料など、すでに入力済みの予定）
-    // ※今回は「今日以降の取引」を取得します
     final futureTxs = await widget.db.getFutureTransactions(today, endDate);
     
     // 3. 日別予算（ユーザーが設定した目標）
@@ -44,61 +43,22 @@ class _ForecastPageState extends State<ForecastPage> {
     // データ構築
     List<ForecastItem> items = [];
     int runningBalance = currentBalance;
+    final allAccounts = await widget.db.getAllAccounts();
+    final assetIds = allAccounts.where((a) => a.type == 'asset').map((a) => a.id).toList();
 
     for (int i = 0; i < _forecastDays; i++) {
       final date = today.add(Duration(days: i));
       
-      // この日の固定収支 (Transactionsテーブルにある予定)
-      // ※未来の日付で登録されたTransactionを「確定済みの予定」として扱います
-      int income = 0;
-      int fixedExpense = 0;
-      
-      // 勘定科目情報を取得していないので、簡易的に「資産が増えたら収入、減ったら支出」とみなします
-      // 本来はAccountテーブルとJOINすべきですが、ロジック簡略化のため
-      // Transactionの「借方が資産ならプラス、貸方が資産ならマイナス」として計算します
-      // ※厳密には getFutureTransactions で計算済み情報を取得するのがベストですが
-      // ここでは簡易的に全Txを回します（件数が少ない前提）
       final daysTxs = futureTxs.where((t) => 
         t.date.year == date.year && t.date.month == date.month && t.date.day == date.day
       );
       
-      // 資産IDリストが必要ですが、ここでは簡易ロジックとして
-      // 「アプリ内のTransactionデータはすべて資産変動を伴う」前提で、
-      // 資金繰り表としては「入力済みの予定＝変動」とします。
-      // ※より正確にするには、ここでdebit/creditのAccountTypeをチェックしてください。
-      // 今回は「入力された未来の取引はすべてキャッシュフローに影響する」として計算します。
-      // （家計簿アプリでは通常、未来日付で入力するのは家賃や給料など重要項目だけなので）
-      
-      // 簡易計算: 
-      // 借方IDが資産かどうか判定するのが重いので、
-      // 「未来日付のデータがある場合、それを『予定』として表示する」ことに注力します。
-      
-      // 日別予算を取得
       final budgetObj = budgets.firstWhere(
         (b) => b.date.year == date.year && b.date.month == date.month && b.date.day == date.day,
         orElse: () => DailyBudget(date: date, amount: 2000), // デフォルト予算 2000円
       );
       
-      // 残高シミュレーション
-      // 残高 = 前日残高 + (予定収入 - 予定支出) - 日別予算(生活費)
-      
-      // 注: ここではシンプルに「予定データ」の合計を計算したいですが、
-      // 厳密な資産増減判定が難しいので、
-      // ★「未来のデータは、金額が大きい場合（1万円以上）を表示する」などの簡易ロジックにします
-      
       int scheduledChange = 0; // 予定による増減
-      // ここは本来DB側で計算すべきですが、今回は「日別予算」が主役なので、
-      // Transactionは「別途加算」せず、純粋に「予算を引いていく」グラフにします。
-      // もしユーザーが「給料」を未来入力していたら、それを反映させるロジックが必要です。
-      // 今回は【バージョンアップ版】として、以下のロジックにします。
-      
-      // 「未来のTransaction」は、まだ入力されていないことが多いので、
-      // 基本は「日別予算」分だけ毎日減っていくグラフを描きます。
-      // そこにユーザーが手動でTransactionを入れたら反映される仕組みです。
-      
-      // 修正: 確実に計算するために、accountsを取得します
-      final allAccounts = await widget.db.getAllAccounts();
-      final assetIds = allAccounts.where((a) => a.type == 'asset').map((a) => a.id).toList();
 
       for (var tx in daysTxs) {
         if (assetIds.contains(tx.debitAccountId)) scheduledChange += tx.amount; // 資産増
@@ -165,51 +125,166 @@ class _ForecastPageState extends State<ForecastPage> {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
+    // グラフの最小・最大値を計算して、見栄えを調整
+    double minBalance = _items.map((e) => e.balance.toDouble()).reduce((a, b) => a < b ? a : b);
+    double maxBalance = _items.map((e) => e.balance.toDouble()).reduce((a, b) => a > b ? a : b);
+    // 少し余裕を持たせる
+    if (minBalance > 0) minBalance = 0; // 0円スタートを含める
+    double intervalY = (maxBalance - minBalance) / 4; 
+    if (intervalY <= 0) intervalY = 10000;
+
     return Scaffold(
       body: Column(
         children: [
           // 1. グラフエリア (上部)
           Container(
-            height: 250,
-            padding: const EdgeInsets.fromLTRB(16, 40, 16, 10),
+            height: 320, // 高さを広げてリッチに
+            padding: const EdgeInsets.fromLTRB(10, 40, 20, 10),
             color: colorScheme.surfaceContainer,
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('向こう30日の資金繰り予測', style: TextStyle(color: colorScheme.onSurfaceVariant, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 20),
+                Padding(
+                  padding: const EdgeInsets.only(left: 10, bottom: 10),
+                  child: Text('向こう30日の資金繰り予測', style: TextStyle(color: colorScheme.onSurfaceVariant, fontWeight: FontWeight.bold)),
+                ),
                 Expanded(
                   child: LineChart(
                     LineChartData(
-                      gridData: const FlGridData(show: false),
-                      titlesData: const FlTitlesData(show: false),
+                      // --- グリッド線 ---
+                      gridData: FlGridData(
+                        show: true,
+                        drawVerticalLine: true,
+                        horizontalInterval: intervalY,
+                        verticalInterval: 1, // インデックスベース
+                        getDrawingHorizontalLine: (value) {
+                          return FlLine(color: colorScheme.outlineVariant.withOpacity(0.5), strokeWidth: 1, dashArray: [5, 5]);
+                        },
+                        getDrawingVerticalLine: (value) {
+                          // 5日ごとに縦線
+                          if (value.toInt() % 5 == 0) {
+                            return FlLine(color: colorScheme.outlineVariant.withOpacity(0.5), strokeWidth: 1);
+                          }
+                          return const FlLine(color: Colors.transparent);
+                        },
+                      ),
+                      
+                      // --- 軸ラベル (日付・金額) ---
+                      titlesData: FlTitlesData(
+                        show: true,
+                        rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                        topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                        
+                        // 下部 (日付)
+                        bottomTitles: AxisTitles(
+                          sideTitles: SideTitles(
+                            showTitles: true,
+                            reservedSize: 24,
+                            interval: 5, // 5日おきに表示
+                            getTitlesWidget: (value, meta) {
+                              final index = value.toInt();
+                              if (index >= 0 && index < _items.length) {
+                                final date = _items[index].date;
+                                return Padding(
+                                  padding: const EdgeInsets.only(top: 4),
+                                  child: Text(
+                                    DateFormat('M/d').format(date),
+                                    style: TextStyle(fontSize: 10, color: colorScheme.onSurfaceVariant),
+                                  ),
+                                );
+                              }
+                              return const SizedBox.shrink();
+                            },
+                          ),
+                        ),
+                        
+                        // 左側 (金額)
+                        leftTitles: AxisTitles(
+                          sideTitles: SideTitles(
+                            showTitles: true,
+                            reservedSize: 40, // 金額表示用の幅
+                            interval: intervalY,
+                            getTitlesWidget: (value, meta) {
+                              if (value == 0) return const SizedBox.shrink(); // 0は被るので消す
+                              // 万単位などで短縮表示
+                              final valInt = value.toInt();
+                              String text;
+                              if (valInt.abs() >= 10000) {
+                                text = '${(valInt / 10000).toStringAsFixed(0)}万';
+                              } else {
+                                text = '${valInt ~/ 1000}k';
+                              }
+                              return Text(text, style: TextStyle(fontSize: 10, color: colorScheme.onSurfaceVariant), textAlign: TextAlign.right);
+                            },
+                          ),
+                        ),
+                      ),
+                      
                       borderData: FlBorderData(show: false),
+                      
+                      // --- タッチ操作 (ツールチップ) ---
                       lineTouchData: LineTouchData(
+                        handleBuiltInTouches: true,
                         touchTooltipData: LineTouchTooltipData(
+                          // 吹き出しの色
+                          getTooltipColor: (touchedSpot) => colorScheme.inverseSurface.withOpacity(0.9),
+                          // 角丸設定の行を削除しました（デフォルト値を利用）
                           getTooltipItems: (touchedSpots) {
                             return touchedSpots.map((spot) {
+                              final index = spot.x.toInt();
+                              if (index < 0 || index >= _items.length) return null;
+                              final item = _items[index];
+                              
                               return LineTooltipItem(
-                                '${NumberFormat("#,###").format(spot.y)}円',
-                                const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                                '${DateFormat('MM/dd').format(item.date)}\n',
+                                TextStyle(color: colorScheme.onInverseSurface, fontWeight: FontWeight.bold, fontSize: 12),
+                                children: [
+                                  TextSpan(
+                                    text: '${NumberFormat("#,###").format(item.balance)} 円',
+                                    // ★修正箇所: primaryFixedAccent -> inversePrimary
+                                    style: TextStyle(color: colorScheme.inversePrimary, fontWeight: FontWeight.bold, fontSize: 14),
+                                  ),
+                                ]
                               );
                             }).toList();
                           },
                         ),
                       ),
+                      
+                      // --- 線のデータ ---
                       lineBarsData: [
                         LineChartBarData(
                           spots: _items.asMap().entries.map((e) {
                             return FlSpot(e.key.toDouble(), e.value.balance.toDouble());
                           }).toList(),
-                          isCurved: true,
+                          isCurved: true, // 滑らかに
                           color: colorScheme.primary,
                           barWidth: 3,
-                          dotData: const FlDotData(show: false),
+                          isStrokeCapRound: true,
+                          
+                          // ドット (データ点)
+                          dotData: FlDotData(
+                            show: true,
+                            checkToShowDot: (spot, barData) {
+                              // 最初と最後だけドットを表示
+                              return spot.x == 0 || spot.x == _items.length - 1;
+                            },
+                          ),
+                          
+                          // 塗りつぶし (グラデーション)
                           belowBarData: BarAreaData(
                             show: true, 
-                            color: colorScheme.primary.withOpacity(0.1)
+                            gradient: LinearGradient(
+                              colors: [
+                                colorScheme.primary.withOpacity(0.3),
+                                colorScheme.primary.withOpacity(0.0),
+                              ],
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                            ),
                           ),
                         ),
-                        // ゼロライン（危険ライン）
+                        // ゼロライン（赤線、危険ライン）
                         LineChartBarData(
                           spots: [const FlSpot(0, 0), FlSpot((_items.length - 1).toDouble(), 0)],
                           color: Colors.red.withOpacity(0.5),
@@ -241,10 +316,11 @@ class _ForecastPageState extends State<ForecastPage> {
 
                 return ListTile(
                   tileColor: isDanger ? colorScheme.errorContainer.withOpacity(0.1) : null,
+                  dense: true, // 少しコンパクトに
                   title: Row(
                     children: [
                       SizedBox(
-                        width: 80, 
+                        width: 70, 
                         child: Text(
                           dateStr, 
                           style: TextStyle(
@@ -260,35 +336,37 @@ class _ForecastPageState extends State<ForecastPage> {
                             if (item.scheduledChange != 0)
                               Text(
                                 item.scheduledChange > 0 
-                                  ? '+${fmt.format(item.scheduledChange)} (収入予定)' 
-                                  : '${fmt.format(item.scheduledChange)} (支払予定)',
+                                  ? '+${fmt.format(item.scheduledChange)} (収入)' 
+                                  : '${fmt.format(item.scheduledChange)} (支払)',
                                 style: TextStyle(
-                                  fontSize: 12, 
+                                  fontSize: 11, 
                                   color: item.scheduledChange > 0 ? Colors.green : Colors.red
                                 )
                               ),
-                            Text('残高予測: ${fmt.format(item.balance)}', style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
+                            Text('${fmt.format(item.balance)}円', style: TextStyle(fontWeight: FontWeight.bold, color: isDanger ? colorScheme.error : colorScheme.onSurface)),
                           ],
                         ),
                       ),
                     ],
                   ),
-                  trailing: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: colorScheme.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: colorScheme.outlineVariant)
-                    ),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Text('予算', style: TextStyle(fontSize: 10)),
-                        Text('¥${fmt.format(item.budget)}', style: const TextStyle(fontWeight: FontWeight.bold)),
-                      ],
+                  trailing: InkWell(
+                    onTap: () => _editBudget(item),
+                    borderRadius: BorderRadius.circular(8),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: colorScheme.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Text('日予算', style: TextStyle(fontSize: 8)),
+                          Text('¥${fmt.format(item.budget)}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                        ],
+                      ),
                     ),
                   ),
-                  onTap: () => _editBudget(item),
                 );
               },
             ),
@@ -299,6 +377,7 @@ class _ForecastPageState extends State<ForecastPage> {
   }
 }
 
+// ★クラス定義を忘れずに追加
 class ForecastItem {
   final DateTime date;
   final int budget;
