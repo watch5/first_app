@@ -73,11 +73,18 @@ class _MainScreenState extends State<MainScreen> {
     _initData();
   }
 
+// _MainScreenState クラス内の _initData メソッドを修正
+
   Future<void> _initData() async {
     await _db.seedDefaultAccounts();
+    
+    // ★ここに追加！
+    // 開発中のデバッグデータを投入 (すでにデータがあれば無視されます)
+    await _db.seedDebugData();
+    
     await _loadData();
   }
-
+  
   Future<void> _loadData() async {
     final accounts = await _db.getAllAccounts();
     final transactions = await _db.getTransactions();

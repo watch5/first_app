@@ -47,6 +47,7 @@ dependencies:
   google_fonts: ^6.3.3
   shared_preferences: ^2.5.4
   local_auth: ^2.3.0
+  grouped_list: ^6.0.0
 
 dev_dependencies:
   flutter_test:

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
-import 'package:shared_preferences/shared_preferences.dart'; // ★追加
+import 'package:shared_preferences/shared_preferences.dart';
 import '../database.dart';
 
 class AddTransactionPage extends StatefulWidget {
@@ -221,7 +221,21 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
                             Text('何に使った？', style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant, fontWeight: FontWeight.bold)),
                             Text('(借方)', style: TextStyle(fontSize: 10, color: colorScheme.onSurfaceVariant)),
                             const SizedBox(height: 10),
-                            _buildAccountSelector(_debitId, (val) => setState(() => _debitId = val)),
+                            // ★AI予測ロジックを追加
+                            _buildAccountSelector(_debitId, (val) async {
+                              setState(() => _debitId = val);
+                              
+                              // 借方が選択されたら、貸方を予測する
+                              if (val != null) {
+                                final predictedCreditId = await widget.db.getMostFrequentCreditId(val);
+                                
+                                // 予測が見つかり、かつ現在画面が有効ならセット
+                                if (predictedCreditId != null && mounted) {
+                                  setState(() => _creditId = predictedCreditId);
+                                  HapticFeedback.selectionClick(); 
+                                }
+                              }
+                            }),
                           ],
                         ),
                       ),
@@ -254,7 +268,7 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
                   style: FilledButton.styleFrom(
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))
                   ),
-                  onPressed: () async { // asyncにする
+                  onPressed: () async {
                     HapticFeedback.mediumImpact();
                     FocusScope.of(context).unfocus();
                     

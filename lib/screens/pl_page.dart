@@ -27,6 +27,9 @@ class _PLPageState extends State<PLPage> {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     final thisMonthTrans = widget.transactions.where((t) => t.date.year == _targetMonth.year && t.date.month == _targetMonth.month).toList();
 
     int totalIncome = 0;   // 売上高
@@ -58,7 +61,7 @@ class _PLPageState extends State<PLPage> {
         expenseBreakdownAccount[debit] = (expenseBreakdownAccount[debit] ?? 0) + t.amount;
         expenseMap[debit.name] = (expenseMap[debit.name] ?? 0) + t.amount;
         
-        // ★固定費・変動費の振り分け
+        // 固定費・変動費の振り分け
         if (debit.costType == 'fixed') {
           fixedCosts += t.amount;
         } else {
@@ -71,9 +74,9 @@ class _PLPageState extends State<PLPage> {
       }
     }
 
-    // --- ★経営分析ロジック ---
+    // --- 経営分析ロジック ---
     final marginalProfit = totalIncome - variableCosts; // 限界利益
-    final profit = marginalProfit - fixedCosts; // 利益 ( = totalIncome - totalExpense と同じ)
+    final profit = marginalProfit - fixedCosts; // 利益
     
     double marginalProfitRatio = 0; // 限界利益率
     if (totalIncome > 0) {
@@ -102,9 +105,13 @@ class _PLPageState extends State<PLPage> {
         grandTotal = totalIncome > totalExpense ? totalIncome : totalExpense;
     }
 
-    final colorScheme = Theme.of(context).colorScheme;
     final sortedExpenses = expenseBreakdownAccount.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
+
+    // 色の定義 (ダークモード対応)
+    final positiveColor = isDark ? Colors.greenAccent[400]! : Colors.green;
+    final negativeColor = isDark ? Colors.redAccent[200]! : Colors.red;
+    final tealColor = isDark ? Colors.tealAccent[700]! : Colors.teal;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
@@ -137,7 +144,7 @@ class _PLPageState extends State<PLPage> {
           if (_isTableView) ...[
             TAccountTable(
               title: '損益計算書 (P/L)',
-              headerColor: Colors.teal,
+              headerColor: tealColor,
               leftItems: expenseList,
               rightItems: incomeList,
               leftTotal: grandTotal,
@@ -145,38 +152,39 @@ class _PLPageState extends State<PLPage> {
             ),
              const SizedBox(height: 10),
              if (profit >= 0)
-                Text('黒字: ${fmt.format(profit)} 円', style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 16))
+                Text('黒字: ${fmt.format(profit)} 円', style: TextStyle(color: positiveColor, fontWeight: FontWeight.bold, fontSize: 16))
              else
-                Text('赤字: ${fmt.format(-profit)} 円', style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 16)),
+                Text('赤字: ${fmt.format(-profit)} 円', style: TextStyle(color: negativeColor, fontWeight: FontWeight.bold, fontSize: 16)),
 
           ] else ...[
             // ★サマリー＆分析カード
             Card(
               elevation: 2,
-              color: colorScheme.surface,
+              color: colorScheme.surfaceContainer, // ダークモード対応
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
                   children: [
-                    _buildAnalysisRow('売上高', totalIncome, Colors.blue),
+                    _buildAnalysisRow('売上高', totalIncome, Colors.blueAccent),
                     const Divider(height: 20),
-                    _buildAnalysisRow('変動費', variableCosts, Colors.orange), // Variable Costs
-                    _buildAnalysisRow('限界利益', marginalProfit, Colors.teal, isBold: true),
+                    _buildAnalysisRow('変動費', variableCosts, Colors.orangeAccent),
+                    _buildAnalysisRow('限界利益', marginalProfit, tealColor, isBold: true),
                     Align(
                       alignment: Alignment.centerRight,
-                      child: Text('限界利益率: ${(marginalProfitRatio * 100).toStringAsFixed(1)}%', style: TextStyle(fontSize: 12, color: Colors.grey[600]))
+                      child: Text('限界利益率: ${(marginalProfitRatio * 100).toStringAsFixed(1)}%', style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant))
                     ),
                     const Divider(height: 20),
-                    _buildAnalysisRow('固定費', fixedCosts, Colors.redAccent), // Fixed Costs
+                    _buildAnalysisRow('固定費', fixedCosts, Colors.redAccent),
                     const SizedBox(height: 10),
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: profit >= 0 ? Colors.green.withValues(alpha: 0.1) : Colors.red.withValues(alpha: 0.1),
+                        // 背景色を半透明にして馴染ませる
+                        color: profit >= 0 ? positiveColor.withOpacity(0.1) : negativeColor.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(8)
                       ),
-                      child: _buildAnalysisRow('営業利益', profit, profit >= 0 ? Colors.green : Colors.red, isBold: true, size: 20),
+                      child: _buildAnalysisRow('営業利益', profit, profit >= 0 ? positiveColor : negativeColor, isBold: true, size: 20),
                     ),
                   ],
                 ),
@@ -184,31 +192,38 @@ class _PLPageState extends State<PLPage> {
             ),
             const SizedBox(height: 10),
             
-            // ★損益分岐点カード
-            if (breakEvenPoint > 0 && breakEvenPoint < 100000000) // 異常値除け
+            // ★損益分岐点カード (ここが修正ポイント)
+            if (breakEvenPoint > 0 && breakEvenPoint < 100000000)
               Card(
                 elevation: 0,
-                color: Colors.indigo.withValues(alpha: 0.05),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: Colors.indigo.withValues(alpha: 0.2))),
+                // ダークモードでも見やすい色に
+                color: colorScheme.secondaryContainer.withOpacity(0.4),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16), 
+                  side: BorderSide(color: colorScheme.outlineVariant.withOpacity(0.2))
+                ),
                 child: Padding(
                   padding: const EdgeInsets.all(16),
                   child: Column(
                     children: [
-                      const Row(
+                       Row(
                         children: [
-                          Icon(Icons.balance, size: 20, color: Colors.indigo),
-                          SizedBox(width: 8),
-                          Text('損益分岐点 (目標売上)', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo)),
+                          Icon(Icons.balance, size: 20, color: colorScheme.primary),
+                          const SizedBox(width: 8),
+                          Text('損益分岐点 (目標売上)', style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.primary)),
                         ],
                       ),
                       const SizedBox(height: 8),
-                      Text('${fmt.format(breakEvenPoint)} 円', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.indigo)),
+                      Text('${fmt.format(breakEvenPoint)} 円', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: colorScheme.onSurface)),
                       const SizedBox(height: 4),
                       Text(
                         totalIncome >= breakEvenPoint 
                         ? 'クリアしています！ (達成率 ${(totalIncome/breakEvenPoint*100).toStringAsFixed(0)}%)' 
                         : 'あと ${fmt.format(breakEvenPoint - totalIncome)} 円で黒字化ラインです',
-                        style: TextStyle(fontSize: 12, color: totalIncome >= breakEvenPoint ? Colors.green : Colors.orange),
+                        style: TextStyle(
+                          fontSize: 12, 
+                          color: totalIncome >= breakEvenPoint ? positiveColor : Colors.orangeAccent
+                        ),
                       ),
                     ],
                   ),
@@ -217,7 +232,7 @@ class _PLPageState extends State<PLPage> {
             
             const SizedBox(height: 20),
             
-            // グラフ (そのまま)
+            // グラフ
             if (totalIncome > 0 || totalExpense > 0)
               SizedBox(
                 height: 200,
@@ -226,12 +241,12 @@ class _PLPageState extends State<PLPage> {
                     alignment: BarChartAlignment.spaceAround,
                     maxY: (totalIncome > totalExpense ? totalIncome : totalExpense).toDouble() * 1.2 + 100,
                     barTouchData: BarTouchData(enabled: false),
-                    titlesData: FlTitlesData(show: false),
+                    titlesData: const FlTitlesData(show: false),
                     borderData: FlBorderData(show: false),
-                    gridData: FlGridData(show: false),
+                    gridData: const FlGridData(show: false),
                     barGroups: [
-                      BarChartGroupData(x: 0, barRods: [BarChartRodData(toY: totalIncome.toDouble(), color: Colors.green, width: 30, borderRadius: BorderRadius.circular(4))]),
-                      BarChartGroupData(x: 1, barRods: [BarChartRodData(toY: totalExpense.toDouble(), color: Colors.red, width: 30, borderRadius: BorderRadius.circular(4))]),
+                      BarChartGroupData(x: 0, barRods: [BarChartRodData(toY: totalIncome.toDouble(), color: Colors.greenAccent, width: 30, borderRadius: BorderRadius.circular(4))]),
+                      BarChartGroupData(x: 1, barRods: [BarChartRodData(toY: totalExpense.toDouble(), color: Colors.redAccent, width: 30, borderRadius: BorderRadius.circular(4))]),
                     ],
                   ),
                 ),
@@ -251,7 +266,7 @@ class _PLPageState extends State<PLPage> {
 
               return Card(
                 elevation: 0,
-                color: colorScheme.surfaceContainer,
+                color: colorScheme.surfaceContainerHighest.withOpacity(0.3), // 薄い背景
                 margin: const EdgeInsets.only(bottom: 8),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 child: Padding(
@@ -261,30 +276,34 @@ class _PLPageState extends State<PLPage> {
                       Row(
                         children: [
                           Icon(
-                            account.costType == 'fixed' ? Icons.lock_clock : Icons.shopping_bag, // 固定費なら鍵アイコン
+                            account.costType == 'fixed' ? Icons.lock_clock : Icons.shopping_bag,
                             size: 20, 
-                            color: account.costType == 'fixed' ? Colors.red : Colors.orange
+                            // ダークモードでも見やすい色を選択
+                            color: account.costType == 'fixed' ? Colors.redAccent : Colors.orangeAccent
                           ),
                           const SizedBox(width: 10),
-                          Expanded(child: Text(account.name, style: const TextStyle(fontWeight: FontWeight.bold))),
-                          Text('${fmt.format(amount)} 円', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                          Expanded(child: Text(account.name, style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.onSurface))),
+                          Text('${fmt.format(amount)} 円', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: colorScheme.onSurface)),
                         ],
                       ),
                       if (budget > 0) ...[
                         const SizedBox(height: 8),
                         LinearProgressIndicator(
                           value: progress,
-                          backgroundColor: Colors.grey.withValues(alpha: 0.2),
-                          color: amount > budget ? Colors.red : Colors.indigo,
+                          backgroundColor: colorScheme.outlineVariant, // ダークモード対応
+                          color: amount > budget ? colorScheme.error : colorScheme.primary,
                           borderRadius: BorderRadius.circular(4),
                         ),
                         const SizedBox(height: 4),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.end,
                           children: [
-                            Text('予算: ${fmt.format(budget)}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                            Text('予算: ${fmt.format(budget)}', style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
                             const SizedBox(width: 10),
-                            Text(amount > budget ? 'オーバー' : '残: ${fmt.format(budget - amount)}', style: TextStyle(fontSize: 12, color: amount > budget ? Colors.red : Colors.indigo)),
+                            Text(
+                              amount > budget ? 'オーバー' : '残: ${fmt.format(budget - amount)}', 
+                              style: TextStyle(fontSize: 12, color: amount > budget ? colorScheme.error : colorScheme.primary)
+                            ),
                           ],
                         ),
                       ]
@@ -301,10 +320,14 @@ class _PLPageState extends State<PLPage> {
 
   Widget _buildAnalysisRow(String title, int amount, Color color, {bool isBold = false, double size = 16}) {
     final fmt = NumberFormat("#,###");
+    // テキスト色はテーマ依存(onSurface)だが、数字の色(color)は引数で指定された色を使う
+    // ただし、黒文字(Colors.black87)が指定されていた場合はテーマ色に置き換える
+    final textColor = Theme.of(context).colorScheme.onSurface;
+
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(title, style: TextStyle(color: Colors.black87, fontWeight: isBold ? FontWeight.bold : FontWeight.normal, fontSize: size)),
+        Text(title, style: TextStyle(color: textColor, fontWeight: isBold ? FontWeight.bold : FontWeight.normal, fontSize: size)),
         Text('${fmt.format(amount)} 円', style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: size)),
       ],
     );
