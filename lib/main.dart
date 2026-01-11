@@ -3,9 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:intl/date_symbol_data_local.dart';
-import 'package:intl/intl.dart'; // ★追加
+import 'package:intl/intl.dart';
 import 'package:google_fonts/google_fonts.dart'; 
 import 'package:app_links/app_links.dart';
+// import 'package:home_widget/home_widget.dart'; // ★削除: ウィジェット用
 
 import 'database.dart';
 import 'screens/auth_page.dart'; 
@@ -18,6 +19,7 @@ import 'screens/account_settings_page.dart';
 import 'screens/template_settings_page.dart';
 import 'screens/recurring_settings_page.dart'; 
 import 'widgets/ad_banner.dart';
+import 'screens/calendar_page.dart'; // ★追加: カレンダー用
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -82,7 +84,6 @@ class _MainScreenState extends State<MainScreen> {
     await _db.seedDefaultAccounts();
     await _db.seedDebugData();
     await _loadData();
-    // ★データロード後にアラートチェック実行
     _checkCreditCardAlert();
   }
   
@@ -93,40 +94,30 @@ class _MainScreenState extends State<MainScreen> {
       _accounts = accounts;
       _transactions = transactions.reversed.toList();
     });
+    // _updateWidget(); // ★削除
   }
 
-  // ★追加: クレカ引き落としアラート機能
+  // ★削除: ウィジェット更新ロジック (_updateWidget)
+
+  // ---------------------------------------------------------
+  // クレカ引き落としアラート機能
+  // ---------------------------------------------------------
   Future<void> _checkCreditCardAlert() async {
     final now = DateTime.now();
     
-    // 設定がある負債口座をループ
     for (var liability in _accounts.where((a) => a.type == 'liability' && a.withdrawalDay != null && a.paymentAccountId != null)) {
       final withdrawalDay = liability.withdrawalDay!;
       final paymentAccountId = liability.paymentAccountId!;
 
-      // 1. 日付チェック (今日が引き落とし日の7日前〜当日か？)
-      // ※簡易的に「今月」の日付で比較します
       DateTime targetDate = DateTime(now.year, now.month, withdrawalDay);
-      // もし今日が28日で引き落としが5日なら、来月の5日を見る必要があるが、
-      // 簡易実装として「今月のX日」との差分を見ます
-      // (より厳密にするなら翌月またぎの処理が必要ですが、まずはこれで十分機能します)
-      
       final diff = targetDate.difference(now).inDays;
       
-      // 「7日前から当日」かつ「未来(または今日)」の場合のみ警告
       if (diff >= 0 && diff <= 7) {
-        
-        // 2. 残高チェック
-        // クレカの利用額 (Liabilityの残高)
         int cardBalance = await _getBalance(liability.id);
-        // Liabilityは貸方残高がプラスなので、そのまま正の値で返ってくるはず(自作関数の仕様による)
-        // ここでは「支払い必要額」として絶対値をとる
         cardBalance = cardBalance.abs();
 
-        // 銀行の残高 (Assetの残高)
         int bankBalance = await _getBalance(paymentAccountId);
         
-        // 残高不足ならアラート！
         if (cardBalance > bankBalance) {
           if (!mounted) return;
           final fmt = NumberFormat("#,###");
@@ -163,21 +154,18 @@ class _MainScreenState extends State<MainScreen> {
     }
   }
 
-  // 残高計算ヘルパー
   Future<int> _getBalance(int accountId) async {
     int balance = 0;
-    // メモリ上のデータを使う（DB再度叩くより早い）
     for (var t in _transactions) {
       if (t.debitAccountId == accountId) balance += t.amount;
       if (t.creditAccountId == accountId) balance -= t.amount;
     }
-    // Assetは借方+, Liabilityは貸方+だが、上記計算はAsset基準(借方+)になっている。
-    // Liabilityの場合、残高はマイナスになる（借方 < 貸方）ので、
-    // 呼び出し元で abs() を使う想定。
     return balance;
   }
 
-  // ... (Deep Linkやその他のメソッドはそのまま) ...
+  // ---------------------------------------------------------
+  // Deep Linkの実装 (自動連携)
+  // ---------------------------------------------------------
   Future<void> _initDeepLinks() async {
     _appLinks = AppLinks();
     _linkSubscription = _appLinks.uriLinkStream.listen((uri) {
@@ -206,7 +194,7 @@ class _MainScreenState extends State<MainScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('自動連携エラー: 科目が見つかりません'), backgroundColor: Colors.red),
+          const SnackBar(content: Text('自動連携エラー: 科目が見つかりません'), backgroundColor: Colors.red),
         );
       }
       return;
@@ -285,7 +273,7 @@ class _MainScreenState extends State<MainScreen> {
               Navigator.pop(ctx);
               await Navigator.of(context).push(MaterialPageRoute(builder: (context) => AccountSettingsPage(db: _db)));
               _loadData(); 
-              _checkCreditCardAlert(); // 科目設定変更後にもチェック
+              _checkCreditCardAlert(); 
             },
           ),
           ListTile(
@@ -324,6 +312,7 @@ class _MainScreenState extends State<MainScreen> {
       PLPage(transactions: _transactions, accounts: _accounts),
       BSPage(transactions: _transactions, accounts: _accounts, db: _db, onDataChanged: () => _loadData()),
       ForecastPage(db: _db), 
+      CalendarPage(db: _db), // ★追加: カレンダー画面
     ];
 
     return Scaffold(
@@ -347,9 +336,10 @@ class _MainScreenState extends State<MainScreen> {
         },
         destinations: const [
           NavigationDestination(icon: Icon(Icons.list_alt), label: '明細'),
-          NavigationDestination(icon: Icon(Icons.show_chart), label: '損益(P/L)'),
-          NavigationDestination(icon: Icon(Icons.account_balance), label: '資産(B/S)'),
-          NavigationDestination(icon: Icon(Icons.timeline), label: '資金繰り'),
+          NavigationDestination(icon: Icon(Icons.show_chart), label: '損益'),
+          NavigationDestination(icon: Icon(Icons.account_balance), label: '資産'),
+          NavigationDestination(icon: Icon(Icons.timeline), label: '予測'),
+          NavigationDestination(icon: Icon(Icons.calendar_month), label: 'カレンダー'), // ★追加
         ],
       ),
       floatingActionButton: _selectedIndex == 0
