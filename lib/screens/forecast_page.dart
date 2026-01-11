@@ -39,6 +39,9 @@ class _ForecastPageState extends State<ForecastPage> {
     
     // 3. 日別予算（ユーザーが設定した目標）
     final budgets = await widget.db.getDailyBudgets(today, endDate);
+    
+    // 4. ★追加: 繰り返し設定を取得
+    final recurringList = await widget.db.getAllRecurringTransactions();
 
     // データ構築
     List<ForecastItem> items = [];
@@ -49,21 +52,33 @@ class _ForecastPageState extends State<ForecastPage> {
     for (int i = 0; i < _forecastDays; i++) {
       final date = today.add(Duration(days: i));
       
+      // 既存のDBに入っている確定予定
       final daysTxs = futureTxs.where((t) => 
         t.date.year == date.year && t.date.month == date.month && t.date.day == date.day
       );
       
-      final budgetObj = budgets.firstWhere(
-        (b) => b.date.year == date.year && b.date.month == date.month && b.date.day == date.day,
-        orElse: () => DailyBudget(date: date, amount: 2000), // デフォルト予算 2000円
-      );
-      
+      // ★追加: 繰り返し設定からの仮想投影
+      // 「毎月n日」が一致するかチェック
+      final daysRecurring = recurringList.where((r) => r.dayOfMonth == date.day);
+
       int scheduledChange = 0; // 予定による増減
 
+      // 確定取引の計算
       for (var tx in daysTxs) {
         if (assetIds.contains(tx.debitAccountId)) scheduledChange += tx.amount; // 資産増
         if (assetIds.contains(tx.creditAccountId)) scheduledChange -= tx.amount; // 資産減
       }
+      
+      // ★仮想取引の計算
+      for (var r in daysRecurring) {
+        if (assetIds.contains(r.debitAccountId)) scheduledChange += r.amount; 
+        if (assetIds.contains(r.creditAccountId)) scheduledChange -= r.amount; 
+      }
+
+      final budgetObj = budgets.firstWhere(
+        (b) => b.date.year == date.year && b.date.month == date.month && b.date.day == date.day,
+        orElse: () => DailyBudget(date: date, amount: 2000), // デフォルト予算 2000円
+      );
 
       runningBalance += scheduledChange;
       runningBalance -= budgetObj.amount; // 予算分（食費など）を使うと仮定して減らす
@@ -228,7 +243,6 @@ class _ForecastPageState extends State<ForecastPage> {
                         touchTooltipData: LineTouchTooltipData(
                           // 吹き出しの色
                           getTooltipColor: (touchedSpot) => colorScheme.inverseSurface.withOpacity(0.9),
-                          // 角丸設定の行を削除しました（デフォルト値を利用）
                           getTooltipItems: (touchedSpots) {
                             return touchedSpots.map((spot) {
                               final index = spot.x.toInt();
@@ -241,7 +255,6 @@ class _ForecastPageState extends State<ForecastPage> {
                                 children: [
                                   TextSpan(
                                     text: '${NumberFormat("#,###").format(item.balance)} 円',
-                                    // ★修正箇所: primaryFixedAccent -> inversePrimary
                                     style: TextStyle(color: colorScheme.inversePrimary, fontWeight: FontWeight.bold, fontSize: 14),
                                   ),
                                 ]
@@ -377,7 +390,6 @@ class _ForecastPageState extends State<ForecastPage> {
   }
 }
 
-// ★クラス定義を忘れずに追加
 class ForecastItem {
   final DateTime date;
   final int budget;

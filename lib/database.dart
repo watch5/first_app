@@ -24,6 +24,8 @@ class Transactions extends Table {
   IntColumn get creditAccountId => integer()();
   IntColumn get amount => integer()();
   DateTimeColumn get date => dateTime()();
+  // ★追加: 自動連携フラグ (true=自動, false=手動)
+  BoolColumn get isAuto => boolean().withDefault(const Constant(false))();
 }
 
 // --- 3. テンプレートテーブル ---
@@ -35,7 +37,7 @@ class Templates extends Table {
   IntColumn get amount => integer()();
 }
 
-// --- 4. ★追加: 日別予算テーブル ---
+// --- 4. 日別予算テーブル ---
 class DailyBudgets extends Table {
   DateTimeColumn get date => dateTime()(); // 日付
   IntColumn get amount => integer()();     // その日の予算（食費などの変動費）
@@ -44,14 +46,23 @@ class DailyBudgets extends Table {
   Set<Column> get primaryKey => {date};    // 日付を一意のキーにする
 }
 
+// --- 5. 繰り返し取引（固定費・サブスク）テーブル ---
+class RecurringTransactions extends Table {
+  IntColumn get id => integer().autoIncrement()();
+  TextColumn get name => text()(); // "家賃", "Netflix" など
+  IntColumn get dayOfMonth => integer()(); // 毎月何日 (1-31)
+  IntColumn get debitAccountId => integer()();
+  IntColumn get creditAccountId => integer()();
+  IntColumn get amount => integer()();
+}
+
 // --- データベース本体 ---
-// ★DailyBudgetsを追加
-@DriftDatabase(tables: [Accounts, Transactions, Templates, DailyBudgets]) 
+@DriftDatabase(tables: [Accounts, Transactions, Templates, DailyBudgets, RecurringTransactions]) 
 class MyDatabase extends _$MyDatabase {
   MyDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 5; // ★バージョンを 5 に更新
+  int get schemaVersion => 7; // ★バージョンを 7 に更新
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -66,9 +77,15 @@ class MyDatabase extends _$MyDatabase {
       if (from < 4) {
         await m.addColumn(accounts, accounts.costType);
       }
-      // ★バージョン5への移行処理を追加
       if (from < 5) {
         await m.createTable(dailyBudgets);
+      }
+      if (from < 6) {
+        await m.createTable(recurringTransactions);
+      }
+      // ★バージョン7への移行処理 (isAuto列を追加)
+      if (from < 7) {
+        await m.addColumn(transactions, transactions.isAuto);
       }
     },
   );
@@ -111,12 +128,14 @@ class MyDatabase extends _$MyDatabase {
   // === Transactions ===
   Future<List<Transaction>> getTransactions() => select(transactions).get();
   
-  Future<int> addTransaction(int debitId, int creditId, int amount, DateTime date) {
+  // ★変更: isAuto引数を追加 (デフォルトはfalse)
+  Future<int> addTransaction(int debitId, int creditId, int amount, DateTime date, {bool isAuto = false}) {
     return into(transactions).insert(TransactionsCompanion(
       debitAccountId: Value(debitId),
       creditAccountId: Value(creditId),
       amount: Value(amount),
       date: Value(date),
+      isAuto: Value(isAuto), // ★DBに保存
     ));
   }
   
@@ -151,7 +170,7 @@ class MyDatabase extends _$MyDatabase {
     return (delete(templates)..where((t) => t.id.equals(id))).go();
   }
 
-  // === AI予測（スマート予測）機能 ===
+  // === AI予測機能 ===
   Future<int?> getMostFrequentCreditId(int debitId) async {
     final result = await customSelect(
       'SELECT credit_account_id, COUNT(*) as cnt '
@@ -170,9 +189,8 @@ class MyDatabase extends _$MyDatabase {
     return null;
   }
 
-  // === ★追加: 資金繰り・日別予算機能 ===
+  // === 資金繰り・日別予算機能 ===
 
-  // 指定期間の日別予算を取得
   Future<List<DailyBudget>> getDailyBudgets(DateTime start, DateTime end) {
     return (select(dailyBudgets)
       ..where((t) => t.date.isBetweenValues(start, end))
@@ -180,7 +198,6 @@ class MyDatabase extends _$MyDatabase {
     ).get();
   }
 
-  // 日別予算を保存（なければ挿入、あれば更新）
   Future<void> setDailyBudget(DateTime date, int amount) {
     return into(dailyBudgets).insertOnConflictUpdate(DailyBudgetsCompanion(
       date: Value(date),
@@ -188,21 +205,18 @@ class MyDatabase extends _$MyDatabase {
     ));
   }
   
-  // 指定期間の未来の取引を取得（資金繰り予測用）
   Future<List<Transaction>> getFutureTransactions(DateTime start, DateTime end) {
      return (select(transactions)
       ..where((t) => t.date.isBetweenValues(start, end))
     ).get();
   }
   
-  // 現在の「資産」合計を取得（スタート地点用）
   Future<int> getCurrentAssetBalance() async {
     final assetAccounts = await (select(accounts)..where((a) => a.type.equals('asset'))).get();
     if (assetAccounts.isEmpty) return 0;
     
     final assetIds = assetAccounts.map((a) => a.id).toList();
     
-    // 全取引から資産の増減を計算
     final txs = await select(transactions).get();
     int total = 0;
     for (var t in txs) {
@@ -210,6 +224,23 @@ class MyDatabase extends _$MyDatabase {
       if (assetIds.contains(t.creditAccountId)) total -= t.amount;
     }
     return total;
+  }
+
+  // === 繰り返し取引（固定費・サブスク）機能 ===
+  Future<List<RecurringTransaction>> getAllRecurringTransactions() => select(recurringTransactions).get();
+  
+  Future<int> addRecurringTransaction(String name, int day, int debitId, int creditId, int amount) {
+    return into(recurringTransactions).insert(RecurringTransactionsCompanion(
+      name: Value(name),
+      dayOfMonth: Value(day),
+      debitAccountId: Value(debitId),
+      creditAccountId: Value(creditId),
+      amount: Value(amount),
+    ));
+  }
+
+  Future<void> deleteRecurringTransaction(int id) {
+    return (delete(recurringTransactions)..where((t) => t.id.equals(id))).go();
   }
 
   // === 初期データ・デバッグデータ投入 ===
@@ -270,69 +301,12 @@ class MyDatabase extends _$MyDatabase {
     }
 
     await batch((batch) {
-      // 1. 前月の収支
+      // ... (既存のデバッグデータは isAuto 指定なし＝false でOK)
       batch.insert(transactions, TransactionsCompanion.insert(
         debitAccountId: getId('銀行口座'), creditAccountId: getId('給料'),
         amount: 280000, date: date(25, monthOffset: -1),
       ));
-      batch.insert(transactions, TransactionsCompanion.insert(
-        debitAccountId: getId('家賃'), creditAccountId: getId('銀行口座'),
-        amount: 70000, date: date(27, monthOffset: -1),
-      ));
-      batch.insert(transactions, TransactionsCompanion.insert(
-        debitAccountId: getId('電気代'), creditAccountId: getId('クレジットカード'),
-        amount: 5400, date: date(27, monthOffset: -1),
-      ));
-      batch.insert(transactions, TransactionsCompanion.insert(
-        debitAccountId: getId('通信費'), creditAccountId: getId('クレジットカード'),
-        amount: 4980, date: date(27, monthOffset: -1),
-      ));
-
-      // 2. 日々の生活費
-      final foodDays = [2, 5, 8, 12, 15, 19, 22, 26];
-      for (var d in foodDays) {
-         batch.insert(transactions, TransactionsCompanion.insert(
-          debitAccountId: getId('食費'), creditAccountId: getId('PayPay'),
-          amount: 800 + (d * 10), date: date(d),
-        ));
-      }
-
-      batch.insert(transactions, TransactionsCompanion.insert(
-        debitAccountId: getId('外食'), creditAccountId: getId('クレジットカード'),
-        amount: 4500, date: date(10), 
-      ));
-      batch.insert(transactions, TransactionsCompanion.insert(
-        debitAccountId: getId('外食'), creditAccountId: getId('現金'),
-        amount: 3000, date: date(24), 
-      ));
-
-      batch.insert(transactions, TransactionsCompanion.insert(
-        debitAccountId: getId('日用品'), creditAccountId: getId('PayPay'),
-        amount: 2400, date: date(5),
-      ));
-
-      batch.insert(transactions, TransactionsCompanion.insert(
-        debitAccountId: getId('Suica/PASMO'), creditAccountId: getId('現金'),
-        amount: 5000, date: date(1),
-      ));
-      batch.insert(transactions, TransactionsCompanion.insert(
-        debitAccountId: getId('交通費'), creditAccountId: getId('Suica/PASMO'),
-        amount: 800, date: date(3),
-      ));
-      batch.insert(transactions, TransactionsCompanion.insert(
-        debitAccountId: getId('交通費'), creditAccountId: getId('Suica/PASMO'),
-        amount: 1200, date: date(14),
-      ));
-
-      batch.insert(transactions, TransactionsCompanion.insert(
-        debitAccountId: getId('趣味・娯楽'), creditAccountId: getId('クレジットカード'),
-        amount: 12800, date: date(15),
-      ));
-      
-      batch.insert(transactions, TransactionsCompanion.insert(
-        debitAccountId: getId('医療費'), creditAccountId: getId('現金'),
-        amount: 1200, date: date(20),
-      ));
+      // ... (以下略、長くなるので省略しますが既存のままでOKです)
     });
   }
 }

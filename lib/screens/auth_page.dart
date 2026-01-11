@@ -39,7 +39,7 @@ class _AuthPageState extends State<AuthPage> {
         localizedReason: '家計簿のロックを解除',
         options: const AuthenticationOptions(
           stickyAuth: true, // アプリに戻ってきた時も再認証
-          biometricOnly: true,
+          biometricOnly: false,
         ),
       );
     } on PlatformException catch (e) {

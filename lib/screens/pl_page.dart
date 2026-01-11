@@ -51,24 +51,35 @@ class _PLPageState extends State<PLPage> {
       }
     }
 
-    // 集計
+    // 集計ロジック (貸借逆のパターンも考慮)
     for (var t in thisMonthTrans) {
       final debit = widget.accounts.firstWhere((a) => a.id == t.debitAccountId, orElse: () => const Account(id: -1, name: '不明', type: '', costType: 'variable'));
       final credit = widget.accounts.firstWhere((a) => a.id == t.creditAccountId, orElse: () => const Account(id: -1, name: '不明', type: '', costType: 'variable'));
 
+      // 1. 借方 (左側) の処理
       if (debit.type == 'expense') {
         totalExpense += t.amount;
         expenseBreakdownAccount[debit] = (expenseBreakdownAccount[debit] ?? 0) + t.amount;
         expenseMap[debit.name] = (expenseMap[debit.name] ?? 0) + t.amount;
         
-        // 固定費・変動費の振り分け
-        if (debit.costType == 'fixed') {
-          fixedCosts += t.amount;
-        } else {
-          variableCosts += t.amount;
-        }
+        if (debit.costType == 'fixed') fixedCosts += t.amount;
+        else variableCosts += t.amount;
+
+      } else if (debit.type == 'income') {
+        totalIncome -= t.amount;
+        incomeMap[debit.name] = (incomeMap[debit.name] ?? 0) - t.amount;
       }
-      if (credit.type == 'income') {
+
+      // 2. 貸方 (右側) の処理
+      if (credit.type == 'expense') {
+        totalExpense -= t.amount;
+        expenseBreakdownAccount[credit] = (expenseBreakdownAccount[credit] ?? 0) - t.amount;
+        expenseMap[credit.name] = (expenseMap[credit.name] ?? 0) - t.amount;
+
+        if (credit.costType == 'fixed') fixedCosts -= t.amount;
+        else variableCosts -= t.amount;
+
+      } else if (credit.type == 'income') {
         totalIncome += t.amount;
         incomeMap[credit.name] = (incomeMap[credit.name] ?? 0) + t.amount;
       }
@@ -101,8 +112,9 @@ class _PLPageState extends State<PLPage> {
       incomeList.add(MapEntry('当期純損失', -profit));
       grandTotal = totalExpense;
     }
-    if (grandTotal == 0 && (totalIncome > 0 || totalExpense > 0)) {
-        grandTotal = totalIncome > totalExpense ? totalIncome : totalExpense;
+    if (grandTotal <= 0) {
+       grandTotal = (totalIncome > totalExpense ? totalIncome : totalExpense);
+       if (grandTotal <= 0) grandTotal = 0;
     }
 
     final sortedExpenses = expenseBreakdownAccount.entries.toList()
@@ -157,10 +169,10 @@ class _PLPageState extends State<PLPage> {
                 Text('赤字: ${fmt.format(-profit)} 円', style: TextStyle(color: negativeColor, fontWeight: FontWeight.bold, fontSize: 16)),
 
           ] else ...[
-            // ★サマリー＆分析カード
+            // サマリー＆分析カード
             Card(
               elevation: 2,
-              color: colorScheme.surfaceContainer, // ダークモード対応
+              color: colorScheme.surfaceContainer, 
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               child: Padding(
                 padding: const EdgeInsets.all(16),
@@ -180,8 +192,8 @@ class _PLPageState extends State<PLPage> {
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        // 背景色を半透明にして馴染ませる
-                        color: profit >= 0 ? positiveColor.withOpacity(0.1) : negativeColor.withOpacity(0.1),
+                        // ★修正: withOpacity -> withValues
+                        color: profit >= 0 ? positiveColor.withValues(alpha: 0.1) : negativeColor.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(8)
                       ),
                       child: _buildAnalysisRow('営業利益', profit, profit >= 0 ? positiveColor : negativeColor, isBold: true, size: 20),
@@ -192,15 +204,16 @@ class _PLPageState extends State<PLPage> {
             ),
             const SizedBox(height: 10),
             
-            // ★損益分岐点カード (ここが修正ポイント)
+            // 損益分岐点カード
             if (breakEvenPoint > 0 && breakEvenPoint < 100000000)
               Card(
                 elevation: 0,
-                // ダークモードでも見やすい色に
-                color: colorScheme.secondaryContainer.withOpacity(0.4),
+                // ★修正: withOpacity -> withValues
+                color: colorScheme.secondaryContainer.withValues(alpha: 0.4),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(16), 
-                  side: BorderSide(color: colorScheme.outlineVariant.withOpacity(0.2))
+                  // ★修正: withOpacity -> withValues
+                  side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.2))
                 ),
                 child: Padding(
                   padding: const EdgeInsets.all(16),
@@ -262,11 +275,13 @@ class _PLPageState extends State<PLPage> {
               final amount = e.value;
               final budget = account.monthlyBudget ?? 0;
               double progress = 0;
-              if (budget > 0) progress = (amount / budget).clamp(0.0, 1.0);
+              if (budget > 0 && amount > 0) progress = (amount / budget).clamp(0.0, 1.0);
+              if (amount < 0) progress = 0;
 
               return Card(
                 elevation: 0,
-                color: colorScheme.surfaceContainerHighest.withOpacity(0.3), // 薄い背景
+                // ★修正: withOpacity -> withValues
+                color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3), // 薄い背景
                 margin: const EdgeInsets.only(bottom: 8),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 child: Padding(
@@ -278,7 +293,6 @@ class _PLPageState extends State<PLPage> {
                           Icon(
                             account.costType == 'fixed' ? Icons.lock_clock : Icons.shopping_bag,
                             size: 20, 
-                            // ダークモードでも見やすい色を選択
                             color: account.costType == 'fixed' ? Colors.redAccent : Colors.orangeAccent
                           ),
                           const SizedBox(width: 10),
@@ -290,7 +304,7 @@ class _PLPageState extends State<PLPage> {
                         const SizedBox(height: 8),
                         LinearProgressIndicator(
                           value: progress,
-                          backgroundColor: colorScheme.outlineVariant, // ダークモード対応
+                          backgroundColor: colorScheme.outlineVariant, 
                           color: amount > budget ? colorScheme.error : colorScheme.primary,
                           borderRadius: BorderRadius.circular(4),
                         ),
@@ -320,8 +334,6 @@ class _PLPageState extends State<PLPage> {
 
   Widget _buildAnalysisRow(String title, int amount, Color color, {bool isBold = false, double size = 16}) {
     final fmt = NumberFormat("#,###");
-    // テキスト色はテーマ依存(onSurface)だが、数字の色(color)は引数で指定された色を使う
-    // ただし、黒文字(Colors.black87)が指定されていた場合はテーマ色に置き換える
     final textColor = Theme.of(context).colorScheme.onSurface;
 
     return Row(

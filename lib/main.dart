@@ -1,8 +1,10 @@
+import 'dart:async'; // ★追加
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:google_fonts/google_fonts.dart'; 
+import 'package:app_links/app_links.dart'; // ★追加
 
 import 'database.dart';
 import 'screens/auth_page.dart'; 
@@ -11,10 +13,11 @@ import 'screens/auth_page.dart';
 import 'screens/transaction_list_page.dart';
 import 'screens/pl_page.dart';
 import 'screens/bs_page.dart';
-import 'screens/forecast_page.dart'; // ★追加: 資金繰り画面
+import 'screens/forecast_page.dart';
 import 'screens/add_transaction_page.dart';
 import 'screens/account_settings_page.dart';
 import 'screens/template_settings_page.dart';
+import 'screens/recurring_settings_page.dart'; 
 import 'widgets/ad_banner.dart';
 
 Future<void> main() async {
@@ -65,15 +68,25 @@ class _MainScreenState extends State<MainScreen> {
   List<Transaction> _transactions = [];
   List<Account> _accounts = [];
 
+  // ★Deep Link用の変数
+  late AppLinks _appLinks;
+  StreamSubscription<Uri>? _linkSubscription;
+
   @override
   void initState() {
     super.initState();
     _initData();
+    _initDeepLinks(); // ★初期化
+  }
+
+  @override
+  void dispose() {
+    _linkSubscription?.cancel();
+    super.dispose();
   }
 
   Future<void> _initData() async {
     await _db.seedDefaultAccounts();
-    // デバッグデータ投入 (データが空の場合のみ)
     await _db.seedDebugData();
     await _loadData();
   }
@@ -88,8 +101,79 @@ class _MainScreenState extends State<MainScreen> {
     });
   }
 
-  Future<void> _addTransaction(int debitId, int creditId, int amount, DateTime date) async {
-    await _db.addTransaction(debitId, creditId, amount, date);
+  // ---------------------------------------------------------
+  // ★Deep Linkの実装 (自動連携)
+  // ---------------------------------------------------------
+  Future<void> _initDeepLinks() async {
+    _appLinks = AppLinks();
+
+    // リンクの監視
+    _linkSubscription = _appLinks.uriLinkStream.listen((uri) {
+      _handleDeepLink(uri);
+    });
+  }
+
+  Future<void> _handleDeepLink(Uri uri) async {
+    // dualy://add?amount=... のみ処理
+    if (uri.host != 'add') return;
+
+    final params = uri.queryParameters;
+    final amountStr = params['amount'];
+    final debitName = params['debit'];
+    final creditName = params['credit'];
+
+    if (amountStr == null || debitName == null || creditName == null) return;
+
+    final amount = int.tryParse(amountStr);
+    if (amount == null) return;
+
+    if (_accounts.isEmpty) {
+      await _loadData();
+    }
+
+    int? debitId;
+    int? creditId;
+
+    try {
+      debitId = _accounts.firstWhere((a) => a.name == debitName).id;
+      creditId = _accounts.firstWhere((a) => a.name == creditName).id;
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('自動連携エラー: 科目「$debitName」または「$creditName」が見つかりません'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+      return;
+    }
+
+    // ★重要: isAuto: true を渡して記帳
+    await _addTransaction(debitId, creditId, amount, DateTime.now(), isAuto: true);
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.link, color: Colors.white), // アイコンをリンク用に
+              const SizedBox(width: 10),
+              Expanded(child: Text('自動連携: $debitName ¥$amount を記帳しました')),
+            ],
+          ),
+          backgroundColor: Colors.teal,
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    }
+  }
+
+  // ★変更: isAuto引数を追加
+  Future<void> _addTransaction(int debitId, int creditId, int amount, DateTime date, {bool isAuto = false}) async {
+    await _db.addTransaction(debitId, creditId, amount, date, isAuto: isAuto);
     await _loadData();
   }
 
@@ -104,7 +188,6 @@ class _MainScreenState extends State<MainScreen> {
     await _loadData();
   }
 
-  // 編集画面を開く
   void _editTransaction(Transaction t) async {
     final result = await Navigator.of(context).push(
       MaterialPageRoute(builder: (context) => AddTransactionPage(
@@ -141,13 +224,22 @@ class _MainScreenState extends State<MainScreen> {
             onTap: () async {
               Navigator.pop(ctx);
               await Navigator.of(context).push(MaterialPageRoute(builder: (context) => AccountSettingsPage(db: _db)));
-              _loadData(); // 科目変更を反映
+              _loadData();
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.repeat),
+            title: const Text('固定費・サブスクの管理'),
+            subtitle: const Text('家賃や給料日を登録して予測に反映'),
+            onTap: () async {
+              Navigator.pop(ctx);
+              await Navigator.of(context).push(MaterialPageRoute(builder: (context) => RecurringSettingsPage(db: _db)));
             },
           ),
           ListTile(
             leading: const Icon(Icons.bookmark),
             title: const Text('テンプレートの管理'),
-            subtitle: const Text('よく使う取引（家賃など）を登録'),
+            subtitle: const Text('よく使う取引（手動入力用）'),
             onTap: () async {
               Navigator.pop(ctx);
               await Navigator.of(context).push(MaterialPageRoute(builder: (context) => TemplateSettingsPage(db: _db)));
@@ -170,10 +262,17 @@ class _MainScreenState extends State<MainScreen> {
         onEdit: _editTransaction,
       ),
       PLPage(transactions: _transactions, accounts: _accounts),
-      BSPage(transactions: _transactions, accounts: _accounts),
-      ForecastPage(db: _db), // ★追加: 資金繰り画面
+      
+      // ★修正: BSPageに db と更新用関数を渡す
+      BSPage(
+        transactions: _transactions, 
+        accounts: _accounts, 
+        db: _db, // ★追加
+        onDataChanged: () => _loadData(), // ★追加
+      ),
+      
+      ForecastPage(db: _db), 
     ];
-
     return Scaffold(
       appBar: AppBar(
         title: const Text('Dualy'),
@@ -197,10 +296,9 @@ class _MainScreenState extends State<MainScreen> {
           NavigationDestination(icon: Icon(Icons.list_alt), label: '明細'),
           NavigationDestination(icon: Icon(Icons.show_chart), label: '損益(P/L)'),
           NavigationDestination(icon: Icon(Icons.account_balance), label: '資産(B/S)'),
-          NavigationDestination(icon: Icon(Icons.timeline), label: '資金繰り'), // ★追加
+          NavigationDestination(icon: Icon(Icons.timeline), label: '資金繰り'),
         ],
       ),
-      // 記帳ボタンは「明細」タブ(index=0)のときだけ表示
       floatingActionButton: _selectedIndex == 0
           ? FloatingActionButton.extended(
               onPressed: () async {
@@ -212,6 +310,7 @@ class _MainScreenState extends State<MainScreen> {
                 );
                 
                 if (result != null && !result.containsKey('id')) {
+                  // 手動入力なので isAuto はデフォルト(false)
                   await _addTransaction(
                     result['debitId'], 
                     result['creditId'], 

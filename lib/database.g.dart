@@ -415,6 +415,19 @@ class $TransactionsTable extends Transactions
     type: DriftSqlType.dateTime,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _isAutoMeta = const VerificationMeta('isAuto');
+  @override
+  late final GeneratedColumn<bool> isAuto = GeneratedColumn<bool>(
+    'is_auto',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_auto" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -422,6 +435,7 @@ class $TransactionsTable extends Transactions
     creditAccountId,
     amount,
     date,
+    isAuto,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -476,6 +490,12 @@ class $TransactionsTable extends Transactions
     } else if (isInserting) {
       context.missing(_dateMeta);
     }
+    if (data.containsKey('is_auto')) {
+      context.handle(
+        _isAutoMeta,
+        isAuto.isAcceptableOrUnknown(data['is_auto']!, _isAutoMeta),
+      );
+    }
     return context;
   }
 
@@ -505,6 +525,10 @@ class $TransactionsTable extends Transactions
         DriftSqlType.dateTime,
         data['${effectivePrefix}date'],
       )!,
+      isAuto: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_auto'],
+      )!,
     );
   }
 
@@ -520,12 +544,14 @@ class Transaction extends DataClass implements Insertable<Transaction> {
   final int creditAccountId;
   final int amount;
   final DateTime date;
+  final bool isAuto;
   const Transaction({
     required this.id,
     required this.debitAccountId,
     required this.creditAccountId,
     required this.amount,
     required this.date,
+    required this.isAuto,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -535,6 +561,7 @@ class Transaction extends DataClass implements Insertable<Transaction> {
     map['credit_account_id'] = Variable<int>(creditAccountId);
     map['amount'] = Variable<int>(amount);
     map['date'] = Variable<DateTime>(date);
+    map['is_auto'] = Variable<bool>(isAuto);
     return map;
   }
 
@@ -545,6 +572,7 @@ class Transaction extends DataClass implements Insertable<Transaction> {
       creditAccountId: Value(creditAccountId),
       amount: Value(amount),
       date: Value(date),
+      isAuto: Value(isAuto),
     );
   }
 
@@ -559,6 +587,7 @@ class Transaction extends DataClass implements Insertable<Transaction> {
       creditAccountId: serializer.fromJson<int>(json['creditAccountId']),
       amount: serializer.fromJson<int>(json['amount']),
       date: serializer.fromJson<DateTime>(json['date']),
+      isAuto: serializer.fromJson<bool>(json['isAuto']),
     );
   }
   @override
@@ -570,6 +599,7 @@ class Transaction extends DataClass implements Insertable<Transaction> {
       'creditAccountId': serializer.toJson<int>(creditAccountId),
       'amount': serializer.toJson<int>(amount),
       'date': serializer.toJson<DateTime>(date),
+      'isAuto': serializer.toJson<bool>(isAuto),
     };
   }
 
@@ -579,12 +609,14 @@ class Transaction extends DataClass implements Insertable<Transaction> {
     int? creditAccountId,
     int? amount,
     DateTime? date,
+    bool? isAuto,
   }) => Transaction(
     id: id ?? this.id,
     debitAccountId: debitAccountId ?? this.debitAccountId,
     creditAccountId: creditAccountId ?? this.creditAccountId,
     amount: amount ?? this.amount,
     date: date ?? this.date,
+    isAuto: isAuto ?? this.isAuto,
   );
   Transaction copyWithCompanion(TransactionsCompanion data) {
     return Transaction(
@@ -597,6 +629,7 @@ class Transaction extends DataClass implements Insertable<Transaction> {
           : this.creditAccountId,
       amount: data.amount.present ? data.amount.value : this.amount,
       date: data.date.present ? data.date.value : this.date,
+      isAuto: data.isAuto.present ? data.isAuto.value : this.isAuto,
     );
   }
 
@@ -607,14 +640,15 @@ class Transaction extends DataClass implements Insertable<Transaction> {
           ..write('debitAccountId: $debitAccountId, ')
           ..write('creditAccountId: $creditAccountId, ')
           ..write('amount: $amount, ')
-          ..write('date: $date')
+          ..write('date: $date, ')
+          ..write('isAuto: $isAuto')
           ..write(')'))
         .toString();
   }
 
   @override
   int get hashCode =>
-      Object.hash(id, debitAccountId, creditAccountId, amount, date);
+      Object.hash(id, debitAccountId, creditAccountId, amount, date, isAuto);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -623,7 +657,8 @@ class Transaction extends DataClass implements Insertable<Transaction> {
           other.debitAccountId == this.debitAccountId &&
           other.creditAccountId == this.creditAccountId &&
           other.amount == this.amount &&
-          other.date == this.date);
+          other.date == this.date &&
+          other.isAuto == this.isAuto);
 }
 
 class TransactionsCompanion extends UpdateCompanion<Transaction> {
@@ -632,12 +667,14 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
   final Value<int> creditAccountId;
   final Value<int> amount;
   final Value<DateTime> date;
+  final Value<bool> isAuto;
   const TransactionsCompanion({
     this.id = const Value.absent(),
     this.debitAccountId = const Value.absent(),
     this.creditAccountId = const Value.absent(),
     this.amount = const Value.absent(),
     this.date = const Value.absent(),
+    this.isAuto = const Value.absent(),
   });
   TransactionsCompanion.insert({
     this.id = const Value.absent(),
@@ -645,6 +682,7 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
     required int creditAccountId,
     required int amount,
     required DateTime date,
+    this.isAuto = const Value.absent(),
   }) : debitAccountId = Value(debitAccountId),
        creditAccountId = Value(creditAccountId),
        amount = Value(amount),
@@ -655,6 +693,7 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
     Expression<int>? creditAccountId,
     Expression<int>? amount,
     Expression<DateTime>? date,
+    Expression<bool>? isAuto,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -662,6 +701,7 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
       if (creditAccountId != null) 'credit_account_id': creditAccountId,
       if (amount != null) 'amount': amount,
       if (date != null) 'date': date,
+      if (isAuto != null) 'is_auto': isAuto,
     });
   }
 
@@ -671,6 +711,7 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
     Value<int>? creditAccountId,
     Value<int>? amount,
     Value<DateTime>? date,
+    Value<bool>? isAuto,
   }) {
     return TransactionsCompanion(
       id: id ?? this.id,
@@ -678,6 +719,7 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
       creditAccountId: creditAccountId ?? this.creditAccountId,
       amount: amount ?? this.amount,
       date: date ?? this.date,
+      isAuto: isAuto ?? this.isAuto,
     );
   }
 
@@ -699,6 +741,9 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
     if (date.present) {
       map['date'] = Variable<DateTime>(date.value);
     }
+    if (isAuto.present) {
+      map['is_auto'] = Variable<bool>(isAuto.value);
+    }
     return map;
   }
 
@@ -709,7 +754,8 @@ class TransactionsCompanion extends UpdateCompanion<Transaction> {
           ..write('debitAccountId: $debitAccountId, ')
           ..write('creditAccountId: $creditAccountId, ')
           ..write('amount: $amount, ')
-          ..write('date: $date')
+          ..write('date: $date, ')
+          ..write('isAuto: $isAuto')
           ..write(')'))
         .toString();
   }
@@ -1282,6 +1328,425 @@ class DailyBudgetsCompanion extends UpdateCompanion<DailyBudget> {
   }
 }
 
+class $RecurringTransactionsTable extends RecurringTransactions
+    with TableInfo<$RecurringTransactionsTable, RecurringTransaction> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $RecurringTransactionsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _dayOfMonthMeta = const VerificationMeta(
+    'dayOfMonth',
+  );
+  @override
+  late final GeneratedColumn<int> dayOfMonth = GeneratedColumn<int>(
+    'day_of_month',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _debitAccountIdMeta = const VerificationMeta(
+    'debitAccountId',
+  );
+  @override
+  late final GeneratedColumn<int> debitAccountId = GeneratedColumn<int>(
+    'debit_account_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _creditAccountIdMeta = const VerificationMeta(
+    'creditAccountId',
+  );
+  @override
+  late final GeneratedColumn<int> creditAccountId = GeneratedColumn<int>(
+    'credit_account_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _amountMeta = const VerificationMeta('amount');
+  @override
+  late final GeneratedColumn<int> amount = GeneratedColumn<int>(
+    'amount',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    name,
+    dayOfMonth,
+    debitAccountId,
+    creditAccountId,
+    amount,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'recurring_transactions';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<RecurringTransaction> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('day_of_month')) {
+      context.handle(
+        _dayOfMonthMeta,
+        dayOfMonth.isAcceptableOrUnknown(
+          data['day_of_month']!,
+          _dayOfMonthMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_dayOfMonthMeta);
+    }
+    if (data.containsKey('debit_account_id')) {
+      context.handle(
+        _debitAccountIdMeta,
+        debitAccountId.isAcceptableOrUnknown(
+          data['debit_account_id']!,
+          _debitAccountIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_debitAccountIdMeta);
+    }
+    if (data.containsKey('credit_account_id')) {
+      context.handle(
+        _creditAccountIdMeta,
+        creditAccountId.isAcceptableOrUnknown(
+          data['credit_account_id']!,
+          _creditAccountIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_creditAccountIdMeta);
+    }
+    if (data.containsKey('amount')) {
+      context.handle(
+        _amountMeta,
+        amount.isAcceptableOrUnknown(data['amount']!, _amountMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_amountMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  RecurringTransaction map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return RecurringTransaction(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      dayOfMonth: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}day_of_month'],
+      )!,
+      debitAccountId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}debit_account_id'],
+      )!,
+      creditAccountId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}credit_account_id'],
+      )!,
+      amount: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}amount'],
+      )!,
+    );
+  }
+
+  @override
+  $RecurringTransactionsTable createAlias(String alias) {
+    return $RecurringTransactionsTable(attachedDatabase, alias);
+  }
+}
+
+class RecurringTransaction extends DataClass
+    implements Insertable<RecurringTransaction> {
+  final int id;
+  final String name;
+  final int dayOfMonth;
+  final int debitAccountId;
+  final int creditAccountId;
+  final int amount;
+  const RecurringTransaction({
+    required this.id,
+    required this.name,
+    required this.dayOfMonth,
+    required this.debitAccountId,
+    required this.creditAccountId,
+    required this.amount,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['name'] = Variable<String>(name);
+    map['day_of_month'] = Variable<int>(dayOfMonth);
+    map['debit_account_id'] = Variable<int>(debitAccountId);
+    map['credit_account_id'] = Variable<int>(creditAccountId);
+    map['amount'] = Variable<int>(amount);
+    return map;
+  }
+
+  RecurringTransactionsCompanion toCompanion(bool nullToAbsent) {
+    return RecurringTransactionsCompanion(
+      id: Value(id),
+      name: Value(name),
+      dayOfMonth: Value(dayOfMonth),
+      debitAccountId: Value(debitAccountId),
+      creditAccountId: Value(creditAccountId),
+      amount: Value(amount),
+    );
+  }
+
+  factory RecurringTransaction.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return RecurringTransaction(
+      id: serializer.fromJson<int>(json['id']),
+      name: serializer.fromJson<String>(json['name']),
+      dayOfMonth: serializer.fromJson<int>(json['dayOfMonth']),
+      debitAccountId: serializer.fromJson<int>(json['debitAccountId']),
+      creditAccountId: serializer.fromJson<int>(json['creditAccountId']),
+      amount: serializer.fromJson<int>(json['amount']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'name': serializer.toJson<String>(name),
+      'dayOfMonth': serializer.toJson<int>(dayOfMonth),
+      'debitAccountId': serializer.toJson<int>(debitAccountId),
+      'creditAccountId': serializer.toJson<int>(creditAccountId),
+      'amount': serializer.toJson<int>(amount),
+    };
+  }
+
+  RecurringTransaction copyWith({
+    int? id,
+    String? name,
+    int? dayOfMonth,
+    int? debitAccountId,
+    int? creditAccountId,
+    int? amount,
+  }) => RecurringTransaction(
+    id: id ?? this.id,
+    name: name ?? this.name,
+    dayOfMonth: dayOfMonth ?? this.dayOfMonth,
+    debitAccountId: debitAccountId ?? this.debitAccountId,
+    creditAccountId: creditAccountId ?? this.creditAccountId,
+    amount: amount ?? this.amount,
+  );
+  RecurringTransaction copyWithCompanion(RecurringTransactionsCompanion data) {
+    return RecurringTransaction(
+      id: data.id.present ? data.id.value : this.id,
+      name: data.name.present ? data.name.value : this.name,
+      dayOfMonth: data.dayOfMonth.present
+          ? data.dayOfMonth.value
+          : this.dayOfMonth,
+      debitAccountId: data.debitAccountId.present
+          ? data.debitAccountId.value
+          : this.debitAccountId,
+      creditAccountId: data.creditAccountId.present
+          ? data.creditAccountId.value
+          : this.creditAccountId,
+      amount: data.amount.present ? data.amount.value : this.amount,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('RecurringTransaction(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('dayOfMonth: $dayOfMonth, ')
+          ..write('debitAccountId: $debitAccountId, ')
+          ..write('creditAccountId: $creditAccountId, ')
+          ..write('amount: $amount')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    name,
+    dayOfMonth,
+    debitAccountId,
+    creditAccountId,
+    amount,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is RecurringTransaction &&
+          other.id == this.id &&
+          other.name == this.name &&
+          other.dayOfMonth == this.dayOfMonth &&
+          other.debitAccountId == this.debitAccountId &&
+          other.creditAccountId == this.creditAccountId &&
+          other.amount == this.amount);
+}
+
+class RecurringTransactionsCompanion
+    extends UpdateCompanion<RecurringTransaction> {
+  final Value<int> id;
+  final Value<String> name;
+  final Value<int> dayOfMonth;
+  final Value<int> debitAccountId;
+  final Value<int> creditAccountId;
+  final Value<int> amount;
+  const RecurringTransactionsCompanion({
+    this.id = const Value.absent(),
+    this.name = const Value.absent(),
+    this.dayOfMonth = const Value.absent(),
+    this.debitAccountId = const Value.absent(),
+    this.creditAccountId = const Value.absent(),
+    this.amount = const Value.absent(),
+  });
+  RecurringTransactionsCompanion.insert({
+    this.id = const Value.absent(),
+    required String name,
+    required int dayOfMonth,
+    required int debitAccountId,
+    required int creditAccountId,
+    required int amount,
+  }) : name = Value(name),
+       dayOfMonth = Value(dayOfMonth),
+       debitAccountId = Value(debitAccountId),
+       creditAccountId = Value(creditAccountId),
+       amount = Value(amount);
+  static Insertable<RecurringTransaction> custom({
+    Expression<int>? id,
+    Expression<String>? name,
+    Expression<int>? dayOfMonth,
+    Expression<int>? debitAccountId,
+    Expression<int>? creditAccountId,
+    Expression<int>? amount,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (name != null) 'name': name,
+      if (dayOfMonth != null) 'day_of_month': dayOfMonth,
+      if (debitAccountId != null) 'debit_account_id': debitAccountId,
+      if (creditAccountId != null) 'credit_account_id': creditAccountId,
+      if (amount != null) 'amount': amount,
+    });
+  }
+
+  RecurringTransactionsCompanion copyWith({
+    Value<int>? id,
+    Value<String>? name,
+    Value<int>? dayOfMonth,
+    Value<int>? debitAccountId,
+    Value<int>? creditAccountId,
+    Value<int>? amount,
+  }) {
+    return RecurringTransactionsCompanion(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      dayOfMonth: dayOfMonth ?? this.dayOfMonth,
+      debitAccountId: debitAccountId ?? this.debitAccountId,
+      creditAccountId: creditAccountId ?? this.creditAccountId,
+      amount: amount ?? this.amount,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (dayOfMonth.present) {
+      map['day_of_month'] = Variable<int>(dayOfMonth.value);
+    }
+    if (debitAccountId.present) {
+      map['debit_account_id'] = Variable<int>(debitAccountId.value);
+    }
+    if (creditAccountId.present) {
+      map['credit_account_id'] = Variable<int>(creditAccountId.value);
+    }
+    if (amount.present) {
+      map['amount'] = Variable<int>(amount.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('RecurringTransactionsCompanion(')
+          ..write('id: $id, ')
+          ..write('name: $name, ')
+          ..write('dayOfMonth: $dayOfMonth, ')
+          ..write('debitAccountId: $debitAccountId, ')
+          ..write('creditAccountId: $creditAccountId, ')
+          ..write('amount: $amount')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$MyDatabase extends GeneratedDatabase {
   _$MyDatabase(QueryExecutor e) : super(e);
   $MyDatabaseManager get managers => $MyDatabaseManager(this);
@@ -1289,6 +1754,8 @@ abstract class _$MyDatabase extends GeneratedDatabase {
   late final $TransactionsTable transactions = $TransactionsTable(this);
   late final $TemplatesTable templates = $TemplatesTable(this);
   late final $DailyBudgetsTable dailyBudgets = $DailyBudgetsTable(this);
+  late final $RecurringTransactionsTable recurringTransactions =
+      $RecurringTransactionsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -1298,6 +1765,7 @@ abstract class _$MyDatabase extends GeneratedDatabase {
     transactions,
     templates,
     dailyBudgets,
+    recurringTransactions,
   ];
 }
 
@@ -1498,6 +1966,7 @@ typedef $$TransactionsTableCreateCompanionBuilder =
       required int creditAccountId,
       required int amount,
       required DateTime date,
+      Value<bool> isAuto,
     });
 typedef $$TransactionsTableUpdateCompanionBuilder =
     TransactionsCompanion Function({
@@ -1506,6 +1975,7 @@ typedef $$TransactionsTableUpdateCompanionBuilder =
       Value<int> creditAccountId,
       Value<int> amount,
       Value<DateTime> date,
+      Value<bool> isAuto,
     });
 
 class $$TransactionsTableFilterComposer
@@ -1539,6 +2009,11 @@ class $$TransactionsTableFilterComposer
 
   ColumnFilters<DateTime> get date => $composableBuilder(
     column: $table.date,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isAuto => $composableBuilder(
+    column: $table.isAuto,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -1576,6 +2051,11 @@ class $$TransactionsTableOrderingComposer
     column: $table.date,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<bool> get isAuto => $composableBuilder(
+    column: $table.isAuto,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$TransactionsTableAnnotationComposer
@@ -1605,6 +2085,9 @@ class $$TransactionsTableAnnotationComposer
 
   GeneratedColumn<DateTime> get date =>
       $composableBuilder(column: $table.date, builder: (column) => column);
+
+  GeneratedColumn<bool> get isAuto =>
+      $composableBuilder(column: $table.isAuto, builder: (column) => column);
 }
 
 class $$TransactionsTableTableManager
@@ -1643,12 +2126,14 @@ class $$TransactionsTableTableManager
                 Value<int> creditAccountId = const Value.absent(),
                 Value<int> amount = const Value.absent(),
                 Value<DateTime> date = const Value.absent(),
+                Value<bool> isAuto = const Value.absent(),
               }) => TransactionsCompanion(
                 id: id,
                 debitAccountId: debitAccountId,
                 creditAccountId: creditAccountId,
                 amount: amount,
                 date: date,
+                isAuto: isAuto,
               ),
           createCompanionCallback:
               ({
@@ -1657,12 +2142,14 @@ class $$TransactionsTableTableManager
                 required int creditAccountId,
                 required int amount,
                 required DateTime date,
+                Value<bool> isAuto = const Value.absent(),
               }) => TransactionsCompanion.insert(
                 id: id,
                 debitAccountId: debitAccountId,
                 creditAccountId: creditAccountId,
                 amount: amount,
                 date: date,
+                isAuto: isAuto,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
@@ -2024,6 +2511,244 @@ typedef $$DailyBudgetsTableProcessedTableManager =
       DailyBudget,
       PrefetchHooks Function()
     >;
+typedef $$RecurringTransactionsTableCreateCompanionBuilder =
+    RecurringTransactionsCompanion Function({
+      Value<int> id,
+      required String name,
+      required int dayOfMonth,
+      required int debitAccountId,
+      required int creditAccountId,
+      required int amount,
+    });
+typedef $$RecurringTransactionsTableUpdateCompanionBuilder =
+    RecurringTransactionsCompanion Function({
+      Value<int> id,
+      Value<String> name,
+      Value<int> dayOfMonth,
+      Value<int> debitAccountId,
+      Value<int> creditAccountId,
+      Value<int> amount,
+    });
+
+class $$RecurringTransactionsTableFilterComposer
+    extends Composer<_$MyDatabase, $RecurringTransactionsTable> {
+  $$RecurringTransactionsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get dayOfMonth => $composableBuilder(
+    column: $table.dayOfMonth,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get debitAccountId => $composableBuilder(
+    column: $table.debitAccountId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get creditAccountId => $composableBuilder(
+    column: $table.creditAccountId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get amount => $composableBuilder(
+    column: $table.amount,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$RecurringTransactionsTableOrderingComposer
+    extends Composer<_$MyDatabase, $RecurringTransactionsTable> {
+  $$RecurringTransactionsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get dayOfMonth => $composableBuilder(
+    column: $table.dayOfMonth,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get debitAccountId => $composableBuilder(
+    column: $table.debitAccountId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get creditAccountId => $composableBuilder(
+    column: $table.creditAccountId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get amount => $composableBuilder(
+    column: $table.amount,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$RecurringTransactionsTableAnnotationComposer
+    extends Composer<_$MyDatabase, $RecurringTransactionsTable> {
+  $$RecurringTransactionsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<int> get dayOfMonth => $composableBuilder(
+    column: $table.dayOfMonth,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get debitAccountId => $composableBuilder(
+    column: $table.debitAccountId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get creditAccountId => $composableBuilder(
+    column: $table.creditAccountId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get amount =>
+      $composableBuilder(column: $table.amount, builder: (column) => column);
+}
+
+class $$RecurringTransactionsTableTableManager
+    extends
+        RootTableManager<
+          _$MyDatabase,
+          $RecurringTransactionsTable,
+          RecurringTransaction,
+          $$RecurringTransactionsTableFilterComposer,
+          $$RecurringTransactionsTableOrderingComposer,
+          $$RecurringTransactionsTableAnnotationComposer,
+          $$RecurringTransactionsTableCreateCompanionBuilder,
+          $$RecurringTransactionsTableUpdateCompanionBuilder,
+          (
+            RecurringTransaction,
+            BaseReferences<
+              _$MyDatabase,
+              $RecurringTransactionsTable,
+              RecurringTransaction
+            >,
+          ),
+          RecurringTransaction,
+          PrefetchHooks Function()
+        > {
+  $$RecurringTransactionsTableTableManager(
+    _$MyDatabase db,
+    $RecurringTransactionsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$RecurringTransactionsTableFilterComposer(
+                $db: db,
+                $table: table,
+              ),
+          createOrderingComposer: () =>
+              $$RecurringTransactionsTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$RecurringTransactionsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<int> dayOfMonth = const Value.absent(),
+                Value<int> debitAccountId = const Value.absent(),
+                Value<int> creditAccountId = const Value.absent(),
+                Value<int> amount = const Value.absent(),
+              }) => RecurringTransactionsCompanion(
+                id: id,
+                name: name,
+                dayOfMonth: dayOfMonth,
+                debitAccountId: debitAccountId,
+                creditAccountId: creditAccountId,
+                amount: amount,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String name,
+                required int dayOfMonth,
+                required int debitAccountId,
+                required int creditAccountId,
+                required int amount,
+              }) => RecurringTransactionsCompanion.insert(
+                id: id,
+                name: name,
+                dayOfMonth: dayOfMonth,
+                debitAccountId: debitAccountId,
+                creditAccountId: creditAccountId,
+                amount: amount,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$RecurringTransactionsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$MyDatabase,
+      $RecurringTransactionsTable,
+      RecurringTransaction,
+      $$RecurringTransactionsTableFilterComposer,
+      $$RecurringTransactionsTableOrderingComposer,
+      $$RecurringTransactionsTableAnnotationComposer,
+      $$RecurringTransactionsTableCreateCompanionBuilder,
+      $$RecurringTransactionsTableUpdateCompanionBuilder,
+      (
+        RecurringTransaction,
+        BaseReferences<
+          _$MyDatabase,
+          $RecurringTransactionsTable,
+          RecurringTransaction
+        >,
+      ),
+      RecurringTransaction,
+      PrefetchHooks Function()
+    >;
 
 class $MyDatabaseManager {
   final _$MyDatabase _db;
@@ -2036,4 +2761,6 @@ class $MyDatabaseManager {
       $$TemplatesTableTableManager(_db, _db.templates);
   $$DailyBudgetsTableTableManager get dailyBudgets =>
       $$DailyBudgetsTableTableManager(_db, _db.dailyBudgets);
+  $$RecurringTransactionsTableTableManager get recurringTransactions =>
+      $$RecurringTransactionsTableTableManager(_db, _db.recurringTransactions);
 }
