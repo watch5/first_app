@@ -62,6 +62,28 @@ class $AccountsTable extends Accounts with TableInfo<$AccountsTable, Account> {
     requiredDuringInsert: false,
     defaultValue: const Constant('variable'),
   );
+  static const VerificationMeta _withdrawalDayMeta = const VerificationMeta(
+    'withdrawalDay',
+  );
+  @override
+  late final GeneratedColumn<int> withdrawalDay = GeneratedColumn<int>(
+    'withdrawal_day',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _paymentAccountIdMeta = const VerificationMeta(
+    'paymentAccountId',
+  );
+  @override
+  late final GeneratedColumn<int> paymentAccountId = GeneratedColumn<int>(
+    'payment_account_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -69,6 +91,8 @@ class $AccountsTable extends Accounts with TableInfo<$AccountsTable, Account> {
     type,
     monthlyBudget,
     costType,
+    withdrawalDay,
+    paymentAccountId,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -116,6 +140,24 @@ class $AccountsTable extends Accounts with TableInfo<$AccountsTable, Account> {
         costType.isAcceptableOrUnknown(data['cost_type']!, _costTypeMeta),
       );
     }
+    if (data.containsKey('withdrawal_day')) {
+      context.handle(
+        _withdrawalDayMeta,
+        withdrawalDay.isAcceptableOrUnknown(
+          data['withdrawal_day']!,
+          _withdrawalDayMeta,
+        ),
+      );
+    }
+    if (data.containsKey('payment_account_id')) {
+      context.handle(
+        _paymentAccountIdMeta,
+        paymentAccountId.isAcceptableOrUnknown(
+          data['payment_account_id']!,
+          _paymentAccountIdMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -145,6 +187,14 @@ class $AccountsTable extends Accounts with TableInfo<$AccountsTable, Account> {
         DriftSqlType.string,
         data['${effectivePrefix}cost_type'],
       )!,
+      withdrawalDay: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}withdrawal_day'],
+      ),
+      paymentAccountId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}payment_account_id'],
+      ),
     );
   }
 
@@ -160,12 +210,16 @@ class Account extends DataClass implements Insertable<Account> {
   final String type;
   final int? monthlyBudget;
   final String costType;
+  final int? withdrawalDay;
+  final int? paymentAccountId;
   const Account({
     required this.id,
     required this.name,
     required this.type,
     this.monthlyBudget,
     required this.costType,
+    this.withdrawalDay,
+    this.paymentAccountId,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -177,6 +231,12 @@ class Account extends DataClass implements Insertable<Account> {
       map['monthly_budget'] = Variable<int>(monthlyBudget);
     }
     map['cost_type'] = Variable<String>(costType);
+    if (!nullToAbsent || withdrawalDay != null) {
+      map['withdrawal_day'] = Variable<int>(withdrawalDay);
+    }
+    if (!nullToAbsent || paymentAccountId != null) {
+      map['payment_account_id'] = Variable<int>(paymentAccountId);
+    }
     return map;
   }
 
@@ -189,6 +249,12 @@ class Account extends DataClass implements Insertable<Account> {
           ? const Value.absent()
           : Value(monthlyBudget),
       costType: Value(costType),
+      withdrawalDay: withdrawalDay == null && nullToAbsent
+          ? const Value.absent()
+          : Value(withdrawalDay),
+      paymentAccountId: paymentAccountId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(paymentAccountId),
     );
   }
 
@@ -203,6 +269,8 @@ class Account extends DataClass implements Insertable<Account> {
       type: serializer.fromJson<String>(json['type']),
       monthlyBudget: serializer.fromJson<int?>(json['monthlyBudget']),
       costType: serializer.fromJson<String>(json['costType']),
+      withdrawalDay: serializer.fromJson<int?>(json['withdrawalDay']),
+      paymentAccountId: serializer.fromJson<int?>(json['paymentAccountId']),
     );
   }
   @override
@@ -214,6 +282,8 @@ class Account extends DataClass implements Insertable<Account> {
       'type': serializer.toJson<String>(type),
       'monthlyBudget': serializer.toJson<int?>(monthlyBudget),
       'costType': serializer.toJson<String>(costType),
+      'withdrawalDay': serializer.toJson<int?>(withdrawalDay),
+      'paymentAccountId': serializer.toJson<int?>(paymentAccountId),
     };
   }
 
@@ -223,6 +293,8 @@ class Account extends DataClass implements Insertable<Account> {
     String? type,
     Value<int?> monthlyBudget = const Value.absent(),
     String? costType,
+    Value<int?> withdrawalDay = const Value.absent(),
+    Value<int?> paymentAccountId = const Value.absent(),
   }) => Account(
     id: id ?? this.id,
     name: name ?? this.name,
@@ -231,6 +303,12 @@ class Account extends DataClass implements Insertable<Account> {
         ? monthlyBudget.value
         : this.monthlyBudget,
     costType: costType ?? this.costType,
+    withdrawalDay: withdrawalDay.present
+        ? withdrawalDay.value
+        : this.withdrawalDay,
+    paymentAccountId: paymentAccountId.present
+        ? paymentAccountId.value
+        : this.paymentAccountId,
   );
   Account copyWithCompanion(AccountsCompanion data) {
     return Account(
@@ -241,6 +319,12 @@ class Account extends DataClass implements Insertable<Account> {
           ? data.monthlyBudget.value
           : this.monthlyBudget,
       costType: data.costType.present ? data.costType.value : this.costType,
+      withdrawalDay: data.withdrawalDay.present
+          ? data.withdrawalDay.value
+          : this.withdrawalDay,
+      paymentAccountId: data.paymentAccountId.present
+          ? data.paymentAccountId.value
+          : this.paymentAccountId,
     );
   }
 
@@ -251,13 +335,23 @@ class Account extends DataClass implements Insertable<Account> {
           ..write('name: $name, ')
           ..write('type: $type, ')
           ..write('monthlyBudget: $monthlyBudget, ')
-          ..write('costType: $costType')
+          ..write('costType: $costType, ')
+          ..write('withdrawalDay: $withdrawalDay, ')
+          ..write('paymentAccountId: $paymentAccountId')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, name, type, monthlyBudget, costType);
+  int get hashCode => Object.hash(
+    id,
+    name,
+    type,
+    monthlyBudget,
+    costType,
+    withdrawalDay,
+    paymentAccountId,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -266,7 +360,9 @@ class Account extends DataClass implements Insertable<Account> {
           other.name == this.name &&
           other.type == this.type &&
           other.monthlyBudget == this.monthlyBudget &&
-          other.costType == this.costType);
+          other.costType == this.costType &&
+          other.withdrawalDay == this.withdrawalDay &&
+          other.paymentAccountId == this.paymentAccountId);
 }
 
 class AccountsCompanion extends UpdateCompanion<Account> {
@@ -275,12 +371,16 @@ class AccountsCompanion extends UpdateCompanion<Account> {
   final Value<String> type;
   final Value<int?> monthlyBudget;
   final Value<String> costType;
+  final Value<int?> withdrawalDay;
+  final Value<int?> paymentAccountId;
   const AccountsCompanion({
     this.id = const Value.absent(),
     this.name = const Value.absent(),
     this.type = const Value.absent(),
     this.monthlyBudget = const Value.absent(),
     this.costType = const Value.absent(),
+    this.withdrawalDay = const Value.absent(),
+    this.paymentAccountId = const Value.absent(),
   });
   AccountsCompanion.insert({
     this.id = const Value.absent(),
@@ -288,6 +388,8 @@ class AccountsCompanion extends UpdateCompanion<Account> {
     required String type,
     this.monthlyBudget = const Value.absent(),
     this.costType = const Value.absent(),
+    this.withdrawalDay = const Value.absent(),
+    this.paymentAccountId = const Value.absent(),
   }) : name = Value(name),
        type = Value(type);
   static Insertable<Account> custom({
@@ -296,6 +398,8 @@ class AccountsCompanion extends UpdateCompanion<Account> {
     Expression<String>? type,
     Expression<int>? monthlyBudget,
     Expression<String>? costType,
+    Expression<int>? withdrawalDay,
+    Expression<int>? paymentAccountId,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -303,6 +407,8 @@ class AccountsCompanion extends UpdateCompanion<Account> {
       if (type != null) 'type': type,
       if (monthlyBudget != null) 'monthly_budget': monthlyBudget,
       if (costType != null) 'cost_type': costType,
+      if (withdrawalDay != null) 'withdrawal_day': withdrawalDay,
+      if (paymentAccountId != null) 'payment_account_id': paymentAccountId,
     });
   }
 
@@ -312,6 +418,8 @@ class AccountsCompanion extends UpdateCompanion<Account> {
     Value<String>? type,
     Value<int?>? monthlyBudget,
     Value<String>? costType,
+    Value<int?>? withdrawalDay,
+    Value<int?>? paymentAccountId,
   }) {
     return AccountsCompanion(
       id: id ?? this.id,
@@ -319,6 +427,8 @@ class AccountsCompanion extends UpdateCompanion<Account> {
       type: type ?? this.type,
       monthlyBudget: monthlyBudget ?? this.monthlyBudget,
       costType: costType ?? this.costType,
+      withdrawalDay: withdrawalDay ?? this.withdrawalDay,
+      paymentAccountId: paymentAccountId ?? this.paymentAccountId,
     );
   }
 
@@ -340,6 +450,12 @@ class AccountsCompanion extends UpdateCompanion<Account> {
     if (costType.present) {
       map['cost_type'] = Variable<String>(costType.value);
     }
+    if (withdrawalDay.present) {
+      map['withdrawal_day'] = Variable<int>(withdrawalDay.value);
+    }
+    if (paymentAccountId.present) {
+      map['payment_account_id'] = Variable<int>(paymentAccountId.value);
+    }
     return map;
   }
 
@@ -350,7 +466,9 @@ class AccountsCompanion extends UpdateCompanion<Account> {
           ..write('name: $name, ')
           ..write('type: $type, ')
           ..write('monthlyBudget: $monthlyBudget, ')
-          ..write('costType: $costType')
+          ..write('costType: $costType, ')
+          ..write('withdrawalDay: $withdrawalDay, ')
+          ..write('paymentAccountId: $paymentAccountId')
           ..write(')'))
         .toString();
   }
@@ -1776,6 +1894,8 @@ typedef $$AccountsTableCreateCompanionBuilder =
       required String type,
       Value<int?> monthlyBudget,
       Value<String> costType,
+      Value<int?> withdrawalDay,
+      Value<int?> paymentAccountId,
     });
 typedef $$AccountsTableUpdateCompanionBuilder =
     AccountsCompanion Function({
@@ -1784,6 +1904,8 @@ typedef $$AccountsTableUpdateCompanionBuilder =
       Value<String> type,
       Value<int?> monthlyBudget,
       Value<String> costType,
+      Value<int?> withdrawalDay,
+      Value<int?> paymentAccountId,
     });
 
 class $$AccountsTableFilterComposer
@@ -1817,6 +1939,16 @@ class $$AccountsTableFilterComposer
 
   ColumnFilters<String> get costType => $composableBuilder(
     column: $table.costType,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get withdrawalDay => $composableBuilder(
+    column: $table.withdrawalDay,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get paymentAccountId => $composableBuilder(
+    column: $table.paymentAccountId,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -1854,6 +1986,16 @@ class $$AccountsTableOrderingComposer
     column: $table.costType,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<int> get withdrawalDay => $composableBuilder(
+    column: $table.withdrawalDay,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get paymentAccountId => $composableBuilder(
+    column: $table.paymentAccountId,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$AccountsTableAnnotationComposer
@@ -1881,6 +2023,16 @@ class $$AccountsTableAnnotationComposer
 
   GeneratedColumn<String> get costType =>
       $composableBuilder(column: $table.costType, builder: (column) => column);
+
+  GeneratedColumn<int> get withdrawalDay => $composableBuilder(
+    column: $table.withdrawalDay,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get paymentAccountId => $composableBuilder(
+    column: $table.paymentAccountId,
+    builder: (column) => column,
+  );
 }
 
 class $$AccountsTableTableManager
@@ -1916,12 +2068,16 @@ class $$AccountsTableTableManager
                 Value<String> type = const Value.absent(),
                 Value<int?> monthlyBudget = const Value.absent(),
                 Value<String> costType = const Value.absent(),
+                Value<int?> withdrawalDay = const Value.absent(),
+                Value<int?> paymentAccountId = const Value.absent(),
               }) => AccountsCompanion(
                 id: id,
                 name: name,
                 type: type,
                 monthlyBudget: monthlyBudget,
                 costType: costType,
+                withdrawalDay: withdrawalDay,
+                paymentAccountId: paymentAccountId,
               ),
           createCompanionCallback:
               ({
@@ -1930,12 +2086,16 @@ class $$AccountsTableTableManager
                 required String type,
                 Value<int?> monthlyBudget = const Value.absent(),
                 Value<String> costType = const Value.absent(),
+                Value<int?> withdrawalDay = const Value.absent(),
+                Value<int?> paymentAccountId = const Value.absent(),
               }) => AccountsCompanion.insert(
                 id: id,
                 name: name,
                 type: type,
                 monthlyBudget: monthlyBudget,
                 costType: costType,
+                withdrawalDay: withdrawalDay,
+                paymentAccountId: paymentAccountId,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
