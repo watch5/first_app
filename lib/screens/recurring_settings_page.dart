@@ -59,14 +59,14 @@ class _RecurringSettingsPageState extends State<RecurringSettingsPage> {
                   ),
                   const SizedBox(height: 10),
                   DropdownButtonFormField<int>(
-                    value: debitId,
+                    initialValue: debitId,
                     isExpanded: true,
                     hint: const Text('借方 (何に？)'),
                     items: _accounts.map((a) => DropdownMenuItem(value: a.id, child: Text(a.name, overflow: TextOverflow.ellipsis))).toList(),
                     onChanged: (v) => setState(() => debitId = v),
                   ),
                   DropdownButtonFormField<int>(
-                    value: creditId,
+                    initialValue: creditId,
                     isExpanded: true,
                     hint: const Text('貸方 (どこから？)'),
                     items: _accounts.map((a) => DropdownMenuItem(value: a.id, child: Text(a.name, overflow: TextOverflow.ellipsis))).toList(),

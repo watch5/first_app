@@ -89,8 +89,8 @@ class TransactionListScreen extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               child: Row(
                 children: [
-                  // ★追加: 自動連携アイコン表示エリア
-                  if (t.isAuto) ...[
+                  // ★修正: isAuto は int (0 or 1) なので、1と比較して判定する
+                  if (t.isAuto == 1) ...[
                     Padding(
                       padding: const EdgeInsets.only(right: 12),
                       child: Icon(Icons.link, size: 20, color: colorScheme.primary),

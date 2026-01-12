@@ -62,8 +62,11 @@ class _PLPageState extends State<PLPage> {
         expenseBreakdownAccount[debit] = (expenseBreakdownAccount[debit] ?? 0) + t.amount;
         expenseMap[debit.name] = (expenseMap[debit.name] ?? 0) + t.amount;
         
-        if (debit.costType == 'fixed') fixedCosts += t.amount;
-        else variableCosts += t.amount;
+        if (debit.costType == 'fixed') {
+          fixedCosts += t.amount;
+        } else {
+          variableCosts += t.amount;
+        }
 
       } else if (debit.type == 'income') {
         totalIncome -= t.amount;
@@ -76,8 +79,11 @@ class _PLPageState extends State<PLPage> {
         expenseBreakdownAccount[credit] = (expenseBreakdownAccount[credit] ?? 0) - t.amount;
         expenseMap[credit.name] = (expenseMap[credit.name] ?? 0) - t.amount;
 
-        if (credit.costType == 'fixed') fixedCosts -= t.amount;
-        else variableCosts -= t.amount;
+        if (credit.costType == 'fixed') {
+          fixedCosts -= t.amount;
+        } else {
+          variableCosts -= t.amount;
+        }
 
       } else if (credit.type == 'income') {
         totalIncome += t.amount;

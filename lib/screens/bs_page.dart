@@ -59,7 +59,7 @@ class _BSPageState extends State<BSPage> {
                 const Text('「実際の残高」を入力してください。\n計算上の残高との差額を「使途不明金」として自動調整します。', style: TextStyle(fontSize: 12)),
                 const SizedBox(height: 20),
                 DropdownButtonFormField<Account>(
-                  value: selectedAccount,
+                  initialValue: selectedAccount,
                   decoration: const InputDecoration(labelText: '合わせる口座'),
                   items: assetAccounts.map((a) => DropdownMenuItem(value: a, child: Text(a.name))).toList(),
                   onChanged: (val) {
@@ -120,11 +120,11 @@ class _BSPageState extends State<BSPage> {
                     // 実際の方が多い＝臨時収入（または記入漏れの入金）
                     // 借方:資産 / 貸方:不明金
                     // ★isAuto: true にしておくと、あとで「これは自動調整だ」と分かって便利
-                    await widget.db.addTransaction(selectedAccount.id, adjAccount!.id, diff, DateTime.now(), isAuto: true);
+                    await widget.db.addTransaction(selectedAccount.id, adjAccount.id, diff, DateTime.now(), isAuto: true);
                   } else {
                     // 実際の方が少ない＝使途不明金（支出）
                     // 借方:不明金 / 貸方:資産
-                    await widget.db.addTransaction(adjAccount!.id, selectedAccount.id, diff.abs(), DateTime.now(), isAuto: true);
+                    await widget.db.addTransaction(adjAccount.id, selectedAccount.id, diff.abs(), DateTime.now(), isAuto: true);
                   }
 
                   if (context.mounted) {

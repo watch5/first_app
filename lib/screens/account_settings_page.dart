@@ -154,7 +154,7 @@ class _AccountSettingsPageState extends State<AccountSettingsPage> {
                          Expanded(
                            flex: 2,
                            child: DropdownButtonFormField<int>(
-                             value: paymentAccountId,
+                             initialValue: paymentAccountId,
                              isExpanded: true,
                              decoration: const InputDecoration(labelText: '引き落とし口座'),
                              items: assetAccounts.map((a) => DropdownMenuItem(value: a.id, child: Text(a.name))).toList(),
@@ -300,7 +300,7 @@ class _AccountSettingsPageState extends State<AccountSettingsPage> {
                          Expanded(
                            flex: 2,
                            child: DropdownButtonFormField<int>(
-                             value: paymentAccountId,
+                             initialValue: paymentAccountId,
                              isExpanded: true,
                              decoration: const InputDecoration(labelText: '引き落とし口座'),
                              items: assetAccounts.map((a) => DropdownMenuItem(value: a.id, child: Text(a.name))).toList(),

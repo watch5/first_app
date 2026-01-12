@@ -1,7 +1,7 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart'; // ★追加
 import '../database.dart';
 
 class ForecastPage extends StatefulWidget {
@@ -26,6 +26,10 @@ class _ForecastPageState extends State<ForecastPage> {
   Future<void> _loadForecast() async {
     setState(() => _isLoading = true);
 
+    // ★追加: 予算タブで設定した「全体の月予算」を取得
+    final prefs = await SharedPreferences.getInstance();
+    final globalMonthlyBudget = prefs.getInt('global_monthly_budget') ?? 0;
+
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final endDate = today.add(Duration(days: _forecastDays));
@@ -47,8 +51,6 @@ class _ForecastPageState extends State<ForecastPage> {
         if (t.debitAccountId == account.id) bal -= t.amount;
       }
       liabilityBalances[account.id] = bal;
-      // ★デバッグログ
-      print('DEBUG: 口座「${account.name}」の現在残高(支払い待ち) = $bal 円');
     }
 
     List<ForecastItem> items = [];
@@ -75,23 +77,25 @@ class _ForecastPageState extends State<ForecastPage> {
 
       // クレカ引き落とし予測
       for (var liability in allAccounts.where((a) => a.type == 'liability' && a.withdrawalDay != null && a.paymentAccountId != null)) {
-        // ★日付の一致判定を修正（年またぎ・月またぎに対応）
-        // 単純に「日が一致するか」だけで判定します
         if (date.day == liability.withdrawalDay) {
           if (assetIds.contains(liability.paymentAccountId)) {
             int amountToPay = liabilityBalances[liability.id] ?? 0;
             if (amountToPay > 0) {
               scheduledChange -= amountToPay;
-              // ★デバッグログ
-              print('DEBUG: ${DateFormat('M/d').format(date)} に ${liability.name} の引き落とし予測: -$amountToPay 円');
             }
           }
         }
       }
 
+      // ★修正: 予算設定ロジック
+      // その月の「日割り予算」を計算（月予算 ÷ その月の日数）
+      int daysInCurrentMonth = DateTime(date.year, date.month + 1, 0).day;
+      int dailyBudgetBase = globalMonthlyBudget > 0 ? (globalMonthlyBudget ~/ daysInCurrentMonth) : 0;
+
+      // 個別に設定した日次予算があればそれを優先、なければ日割り計算値を使う
       final budgetObj = budgets.firstWhere(
         (b) => b.date.year == date.year && b.date.month == date.month && b.date.day == date.day,
-        orElse: () => DailyBudget(date: date, amount: 2000),
+        orElse: () => DailyBudget(date: date, amount: dailyBudgetBase), 
       );
 
       runningBalance += scheduledChange;
@@ -121,7 +125,7 @@ class _ForecastPageState extends State<ForecastPage> {
           controller: controller,
           keyboardType: TextInputType.number,
           autofocus: true,
-          decoration: const InputDecoration(suffixText: '円'),
+          decoration: const InputDecoration(suffixText: '円', helperText: 'この日だけの特別予算を設定できます'),
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('キャンセル')),
