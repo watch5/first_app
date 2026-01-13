@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+// ★追加: 日本語対応用パッケージ
+import 'package:flutter_localizations/flutter_localizations.dart'; 
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:intl/intl.dart';
@@ -10,7 +12,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'database.dart';
 import 'screens/auth_page.dart'; 
-// コードは残す
 import 'screens/budget_page.dart'; 
 import 'screens/pl_page.dart';
 import 'screens/bs_page.dart';
@@ -24,7 +25,7 @@ import 'screens/calendar_page.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await initializeDateFormatting();
+  await initializeDateFormatting('ja'); // 'ja'を指定しておくと安全です
   await MobileAds.instance.initialize();
   runApp(const MyApp());
 }
@@ -48,6 +49,18 @@ class MyApp extends StatelessWidget {
         textTheme: GoogleFonts.notoSansJpTextTheme(ThemeData.dark().textTheme),
       ),
       themeMode: ThemeMode.system, 
+      
+      // ★追加: 日本語化の設定ここから
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: const [
+        Locale('ja'), // 日本語
+      ],
+      // ★追加ここまで
+
       home: const AuthPage(), 
     );
   }
@@ -99,22 +112,18 @@ class _MainScreenState extends State<MainScreen> {
     });
   }
 
-  // ★修正: メッセージを改行を入れて綺麗にしました
   Future<void> _checkNoMoneyDay() async {
     final prefs = await SharedPreferences.getInstance();
     final now = DateTime.now();
     final todayStr = DateFormat('yyyy-MM-dd').format(now);
     
-    // 今日すでに褒めていたらスキップ
     final lastPopup = prefs.getString('last_no_money_popup');
     if (lastPopup == todayStr) return;
 
-    // 昨日の日付
     final yesterday = now.subtract(const Duration(days: 1));
     final yesterdayStart = DateTime(yesterday.year, yesterday.month, yesterday.day);
     final yesterdayEnd = DateTime(yesterday.year, yesterday.month, yesterday.day, 23, 59, 59);
 
-    // 昨日の出費を計算
     int expense = 0;
     final expenseIds = _accounts.where((a) => a.type == 'expense').map((a) => a.id).toList();
 
@@ -125,7 +134,6 @@ class _MainScreenState extends State<MainScreen> {
       }
     }
 
-    // 出費が0円なら褒める！
     if (expense == 0 && mounted) {
       await prefs.setString('last_no_money_popup', todayStr);
 
@@ -162,7 +170,6 @@ class _MainScreenState extends State<MainScreen> {
     }
   }
 
-  // クレカ引き落としアラート
   Future<void> _checkCreditCardAlert() async {
     final now = DateTime.now();
     for (var liability in _accounts.where((a) => a.type == 'liability' && a.withdrawalDay != null && a.paymentAccountId != null)) {
@@ -198,7 +205,6 @@ class _MainScreenState extends State<MainScreen> {
     return balance;
   }
 
-  // Deep Link
   Future<void> _initDeepLinks() async {
     _appLinks = AppLinks();
     _linkSubscription = _appLinks.uriLinkStream.listen((uri) {

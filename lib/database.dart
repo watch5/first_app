@@ -13,7 +13,6 @@ class Account {
   final int? paymentAccountId; // for liabilities
   final int budget; // 月次予算 (0の場合は予算なし)
 
-  // 互換性のためのゲッター
   int? get monthlyBudget => budget == 0 ? null : budget;
 
   const Account({
@@ -163,6 +162,70 @@ class DailyBudget {
   }
 }
 
+// ★追加: 減価償却ペット（固定資産）
+class AssetPet {
+  final int id;
+  final String name;       // ペット名（資産名）
+  final int price;         // 購入価格
+  final DateTime purchaseDate; // 購入日（誕生日）
+  final int lifeYears;     // 耐用年数（寿命）
+  final int characterType; // 0:ロボ, 1:犬, 2:猫...（見た目）
+
+  AssetPet({
+    required this.id,
+    required this.name,
+    required this.price,
+    required this.purchaseDate,
+    required this.lifeYears,
+    required this.characterType,
+  });
+
+  // 現在の価値（HP）を計算
+  int get currentValue {
+    final now = DateTime.now();
+    // 日単位で経過を計算
+    final daysPassed = now.difference(purchaseDate).inDays;
+    final totalDays = lifeYears * 365;
+    
+    if (daysPassed < 0) return price; // 未来の日付なら新品
+    if (daysPassed >= totalDays) return 1; // 償却完了（備忘価額1円）
+
+    // 定額法で計算
+    final depreciation = (price / totalDays) * daysPassed;
+    return (price - depreciation).toInt();
+  }
+
+  // 元気度（0.0 〜 1.0）
+  double get healthRatio {
+     if (price == 0) return 0;
+     // 1円（引退）なら0
+     if (currentValue <= 1) return 0.0;
+     return (currentValue / price).clamp(0.0, 1.0);
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'name': name,
+      'price': price,
+      'purchase_date': purchaseDate.toIso8601String(),
+      'life_years': lifeYears,
+      'character_type': characterType,
+    };
+  }
+
+  static AssetPet fromMap(Map<String, dynamic> map) {
+    return AssetPet(
+      id: map['id'],
+      name: map['name'],
+      price: map['price'],
+      purchaseDate: DateTime.parse(map['purchase_date']),
+      lifeYears: map['life_years'],
+      characterType: map['character_type'],
+    );
+  }
+}
+
 // --- データベース管理クラス ---
 
 class MyDatabase {
@@ -181,87 +244,89 @@ class MyDatabase {
 
   Future<Database> _initDatabase() async {
     String path = join(await getDatabasesPath(), 'dualy_app.db');
-    // バージョンを上げて再作成を強制する
+    // バージョンを4に上げて再作成を強制
     return await openDatabase(
       path,
-      version: 3, 
+      version: 4, 
       onCreate: (db, version) async {
-        // Accounts table
-        await db.execute('''
-          CREATE TABLE accounts(
-            id INTEGER PRIMARY KEY AUTOINCREMENT, 
-            name TEXT, 
-            type TEXT, 
-            cost_type TEXT,
-            withdrawal_day INTEGER,
-            payment_account_id INTEGER,
-            budget INTEGER DEFAULT 0 
-          )
-        ''');
-
-        // Transactions table
-        await db.execute('''
-          CREATE TABLE transactions(
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            debit_account_id INTEGER,
-            credit_account_id INTEGER,
-            amount INTEGER,
-            date TEXT,
-            note TEXT,
-            is_auto INTEGER DEFAULT 0,
-            FOREIGN KEY(debit_account_id) REFERENCES accounts(id),
-            FOREIGN KEY(credit_account_id) REFERENCES accounts(id)
-          )
-        ''');
-
-        // Recurring Transactions table
-        await db.execute('''
-          CREATE TABLE recurring_transactions(
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT,
-            day_of_month INTEGER,
-            debit_account_id INTEGER,
-            credit_account_id INTEGER,
-            amount INTEGER
-          )
-        ''');
-
-        // Templates table
-        await db.execute('''
-          CREATE TABLE templates(
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT,
-            debit_account_id INTEGER,
-            credit_account_id INTEGER,
-            amount INTEGER
-          )
-        ''');
-
-        // Daily Budgets table
-        await db.execute('''
-          CREATE TABLE daily_budgets(
-            date TEXT PRIMARY KEY,
-            amount INTEGER
-          )
-        ''');
+        await _createTables(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
-        // 簡易的なマイグレーション: テーブルがなければ作る
-        // 今回はアンインストール推奨なのでonCreateが走るはずですが、念のため
-        if (oldVersion < 3) {
-          // 既存テーブルの削除（開発中なのでデータリセット）
+        // 開発中なので簡易的に全再作成
+        if (oldVersion < 4) {
           await db.execute('DROP TABLE IF EXISTS accounts');
           await db.execute('DROP TABLE IF EXISTS transactions');
           await db.execute('DROP TABLE IF EXISTS recurring_transactions');
           await db.execute('DROP TABLE IF EXISTS templates');
           await db.execute('DROP TABLE IF EXISTS daily_budgets');
-          // onCreateと同じ処理を実行
-          await _initDatabase().then((d) => d.close()); 
-          // (実際には再帰呼び出しになるので、ここではonCreateの中身をコピペするのが正しいが、
-          // ユーザーにはアンインストールしてもらうのが確実)
+          await db.execute('DROP TABLE IF EXISTS asset_pets'); // 追加
+          await _createTables(db);
         }
       },
     );
+  }
+
+  Future<void> _createTables(Database db) async {
+    await db.execute('''
+      CREATE TABLE accounts(
+        id INTEGER PRIMARY KEY AUTOINCREMENT, 
+        name TEXT, 
+        type TEXT, 
+        cost_type TEXT,
+        withdrawal_day INTEGER,
+        payment_account_id INTEGER,
+        budget INTEGER DEFAULT 0 
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE transactions(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        debit_account_id INTEGER,
+        credit_account_id INTEGER,
+        amount INTEGER,
+        date TEXT,
+        note TEXT,
+        is_auto INTEGER DEFAULT 0,
+        FOREIGN KEY(debit_account_id) REFERENCES accounts(id),
+        FOREIGN KEY(credit_account_id) REFERENCES accounts(id)
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE recurring_transactions(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT,
+        day_of_month INTEGER,
+        debit_account_id INTEGER,
+        credit_account_id INTEGER,
+        amount INTEGER
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE templates(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT,
+        debit_account_id INTEGER,
+        credit_account_id INTEGER,
+        amount INTEGER
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE daily_budgets(
+        date TEXT PRIMARY KEY,
+        amount INTEGER
+      )
+    ''');
+    // ★追加: ペットテーブル
+    await db.execute('''
+      CREATE TABLE asset_pets(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT,
+        price INTEGER,
+        purchase_date TEXT,
+        life_years INTEGER,
+        character_type INTEGER
+      )
+    ''');
   }
   
   // --- Accounts ---
@@ -276,7 +341,6 @@ class MyDatabase {
     await db.insert('accounts', account.toMap(), conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
-  // ★復活: 個別のパラメータで追加するメソッド
   Future<void> addAccount(String name, String type, int? budget, String costType, {int? withdrawalDay, int? paymentAccountId}) async {
     final db = await database;
     await db.insert('accounts', {
@@ -289,7 +353,6 @@ class MyDatabase {
     });
   }
 
-  // ★復活: 属性更新メソッド
   Future<void> updateAccountCostType(int id, String costType) async {
     final db = await database;
     await db.update('accounts', {'cost_type': costType}, where: 'id = ?', whereArgs: [id]);
@@ -362,16 +425,11 @@ class MyDatabase {
     await db.delete('transactions', where: 'id = ?', whereArgs: [id]);
   }
 
-  // ★復活: 将来の取引取得
   Future<List<Transaction>> getFutureTransactions(DateTime start, DateTime end) async {
     final db = await database;
-    // まだ登録されていない未来の予定などを取得するならここですが、
-    // 基本的には「登録済み」のものを返す実装にします
-    // (自動登録ロジックはアプリ起動時などに別途実装が必要)
     return []; 
   }
 
-  // ★復活: 資産残高取得
   Future<int> getCurrentAssetBalance() async {
     final accounts = await getAllAccounts();
     final assetIds = accounts.where((a) => a.type == 'asset').map((a) => a.id).toList();
@@ -386,7 +444,6 @@ class MyDatabase {
     return balance;
   }
   
-  // ★復活: よく使う貸方（予測）
   Future<int?> getMostFrequentCreditId(int debitId) async {
     final db = await database;
     final List<Map<String, dynamic>> result = await db.rawQuery('''
@@ -404,7 +461,7 @@ class MyDatabase {
     return null;
   }
 
-  // --- ★復活: Recurring Transactions (固定費) ---
+  // --- Recurring Transactions ---
   Future<List<RecurringTransaction>> getAllRecurringTransactions() async {
     final db = await database;
     final res = await db.query('recurring_transactions');
@@ -427,7 +484,7 @@ class MyDatabase {
     await db.delete('recurring_transactions', where: 'id = ?', whereArgs: [id]);
   }
 
-  // --- ★復活: Templates (テンプレート) ---
+  // --- Templates ---
   Future<List<Template>> getAllTemplates() async {
     final db = await database;
     final res = await db.query('templates');
@@ -449,10 +506,9 @@ class MyDatabase {
     await db.delete('templates', where: 'id = ?', whereArgs: [id]);
   }
 
-  // --- ★復活: Daily Budgets (日次予算) ---
+  // --- Daily Budgets ---
   Future<List<DailyBudget>> getDailyBudgets(DateTime start, DateTime end) async {
     final db = await database;
-    // 期間指定は実装簡略化のため全件取得してフィルタ
     final res = await db.query('daily_budgets');
     return res.map((m) => DailyBudget.fromMap(m)).toList();
   }
@@ -465,6 +521,29 @@ class MyDatabase {
       {'date': dateStr, 'amount': amount},
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
+  }
+
+  // --- ★追加: Asset Pets (固定資産) ---
+  Future<List<AssetPet>> getAllAssetPets() async {
+    final db = await database;
+    final res = await db.query('asset_pets');
+    return res.map((m) => AssetPet.fromMap(m)).toList();
+  }
+
+  Future<void> addAssetPet(String name, int price, DateTime purchaseDate, int lifeYears, int characterType) async {
+    final db = await database;
+    await db.insert('asset_pets', {
+      'name': name,
+      'price': price,
+      'purchase_date': purchaseDate.toIso8601String(),
+      'life_years': lifeYears,
+      'character_type': characterType,
+    });
+  }
+
+  Future<void> deleteAssetPet(int id) async {
+    final db = await database;
+    await db.delete('asset_pets', where: 'id = ?', whereArgs: [id]);
   }
 
   // --- Seeds ---
@@ -482,12 +561,9 @@ class MyDatabase {
     }
   }
 
-// ★ここから下を上書き（ファイルの最後まで）
-
-  // テストデータを生成するメソッド
   Future<void> seedDebugData() async {
     final txs = await getTransactions();
-    if (txs.isNotEmpty) return; // すでにデータがあれば何もしない
+    if (txs.isNotEmpty) return; 
 
     final now = DateTime.now();
     
@@ -495,24 +571,21 @@ class MyDatabase {
     await addTransaction(2, 14, 250000, DateTime(now.year, now.month - 1, 25), note: '10月分給料');
     // 2. 先月の家賃
     await addTransaction(13, 2, 80000, DateTime(now.year, now.month - 1, 27), note: '10月分家賃');
-    
-    // 3. 今月の給料（予定として入れたい場合も含む）
+    // 3. 今月の給料
     await addTransaction(2, 14, 250000, DateTime(now.year, now.month, 25), note: '11月分給料');
 
-    // 4. 日々の買い物（ランダムっぽく）
-    // 食費 (現金払い)
+    // 4. 日々の買い物
     await addTransaction(10, 1, 1200, DateTime(now.year, now.month, now.day - 5), note: 'ランチ');
     await addTransaction(10, 1, 850, DateTime(now.year, now.month, now.day - 3), note: 'カフェ');
     await addTransaction(10, 1, 3500, DateTime(now.year, now.month, now.day - 1), note: '飲み会');
-    
-    // 日用品 (クレカ払い想定)
     await addTransaction(11, 2, 5000, DateTime(now.year, now.month, now.day - 10), note: 'Amazon');
 
-    // 5. 予算設定（テスト用）
-    // 食費(ID:10)に3万円の予算を設定
+    // 5. 予算設定
     await updateAccountBudget(10, 30000);
-    // 全体予算を設定
     await setDailyBudget(DateTime(now.year, now.month, now.day), 2000);
+
+    // ★追加: テスト用のペット（資産）も作っておく
+    await addAssetPet('MacBook Pro', 300000, DateTime(now.year, now.month - 3, 1), 4, 0); // 3ヶ月前のPC
+    await addAssetPet('社用車', 1500000, DateTime(now.year - 2, 1, 1), 6, 1); // 2年前の車
   }
-} 
-// ↑ クラスの閉じカッコは1つだけです
+}

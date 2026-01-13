@@ -3,11 +3,11 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import '../database.dart';
 import '../widgets/t_account_table.dart';
+import 'pet_room_page.dart'; // ★追加: ペット部屋へ行くため
 
 class BSPage extends StatefulWidget {
   final List<Transaction> transactions;
   final List<Account> accounts;
-  // ★追加: DB操作と画面更新のために必要
   final MyDatabase db;
   final Function onDataChanged;
 
@@ -26,16 +26,14 @@ class BSPage extends StatefulWidget {
 class _BSPageState extends State<BSPage> {
   bool _isTableView = false; // 表モードかどうかのフラグ
 
-  // ★追加: 残高合わせダイアログ
+  // 残高合わせダイアログ
   Future<void> _showAdjustBalanceDialog() async {
-    // 資産口座だけを抽出
     final assetAccounts = widget.accounts.where((a) => a.type == 'asset').toList();
     if (assetAccounts.isEmpty) return;
 
     Account selectedAccount = assetAccounts.first;
     final amountController = TextEditingController();
 
-    // 現在の計算上の残高を取得する関数
     int getCurrentBookBalance(int accountId) {
       int balance = 0;
       for (var t in widget.transactions) {
@@ -66,7 +64,7 @@ class _BSPageState extends State<BSPage> {
                     if (val != null) {
                       setState(() {
                         selectedAccount = val;
-                        amountController.clear(); // 口座を変えたらクリア
+                        amountController.clear();
                       });
                     }
                   },
@@ -101,36 +99,25 @@ class _BSPageState extends State<BSPage> {
 
                   HapticFeedback.mediumImpact();
                   
-                  // 調整用科目の取得（なければ作成）
                   Account? adjAccount;
                   try {
                     adjAccount = widget.accounts.firstWhere((a) => a.name == '使途不明金' || a.name == '残高調整');
                   } catch (e) {
                     await widget.db.addAccount('使途不明金', 'expense', null, 'variable');
-                    // リロードしないとIDが取れないので簡易的に名前で再取得...はできないので、
-                    // ここではメイン画面のリロードを呼んでから処理を終了させたいが、
-                    // 複雑になるので「調整用科目を作りました。もう一度実行してください」とするか、
-                    // あるいはここで再度DBから引く。今回は簡易的に再度DBから引きます。
                     final newAccounts = await widget.db.getAllAccounts();
                     adjAccount = newAccounts.firstWhere((a) => a.name == '使途不明金');
                   }
 
-                  // 記帳実行
                   if (diff > 0) {
-                    // 実際の方が多い＝臨時収入（または記入漏れの入金）
-                    // 借方:資産 / 貸方:不明金
-                    // ★isAuto: true にしておくと、あとで「これは自動調整だ」と分かって便利
-                    await widget.db.addTransaction(selectedAccount.id, adjAccount.id, diff, DateTime.now(), isAuto: true);
+                    await widget.db.addTransaction(selectedAccount.id, adjAccount!.id, diff, DateTime.now(), isAuto: true);
                   } else {
-                    // 実際の方が少ない＝使途不明金（支出）
-                    // 借方:不明金 / 貸方:資産
-                    await widget.db.addTransaction(adjAccount.id, selectedAccount.id, diff.abs(), DateTime.now(), isAuto: true);
+                    await widget.db.addTransaction(adjAccount!.id, selectedAccount.id, diff.abs(), DateTime.now(), isAuto: true);
                   }
 
                   if (context.mounted) {
                     Navigator.pop(ctx);
                     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${diff.abs()}円のズレを調整しました')));
-                    widget.onDataChanged(); // 親画面を更新
+                    widget.onDataChanged();
                   }
                 },
                 child: const Text('調整実行'),
@@ -147,7 +134,6 @@ class _BSPageState extends State<BSPage> {
     final fmt = NumberFormat("#,###");
     final colorScheme = Theme.of(context).colorScheme;
 
-    // --- 集計ロジック (全期間の積み上げ) ---
     Map<int, int> balances = {};
     for (var a in widget.accounts) {
       balances[a.id] = 0;
@@ -180,33 +166,47 @@ class _BSPageState extends State<BSPage> {
     final netAssets = totalAssets - totalLiabilities;
     liabilitiesList.add(MapEntry('純資産', netAssets));
 
-    // 金額順にソート
     assetsList.sort((a, b) => b.value.compareTo(a.value));
     liabilitiesList.sort((a, b) => b.value.compareTo(a.value));
 
-    // --- 画面構築 ---
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
         children: [
-          // ヘッダー (タイトル + 切り替えボタン)
+          // ヘッダー (タイトル + ボタン類)
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text('現在の資産状況', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-              IconButton.filledTonal(
-                onPressed: () {
-                  HapticFeedback.selectionClick();
-                  setState(() => _isTableView = !_isTableView);
-                },
-                icon: Icon(_isTableView ? Icons.pie_chart : Icons.description),
-                tooltip: _isTableView ? 'グラフに戻る' : '貸借対照表を見る',
+              Row(
+                children: [
+                  // ★追加: ペット部屋へのボタン
+                  IconButton(
+                    icon: const Icon(Icons.pets, color: Colors.indigo), 
+                    tooltip: '資産ペット',
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(builder: (context) => PetRoomPage(db: widget.db)),
+                      );
+                    },
+                  ),
+                  const SizedBox(width: 8),
+                  // 表示切り替えボタン
+                  IconButton.filledTonal(
+                    onPressed: () {
+                      HapticFeedback.selectionClick();
+                      setState(() => _isTableView = !_isTableView);
+                    },
+                    icon: Icon(_isTableView ? Icons.pie_chart : Icons.description),
+                    tooltip: _isTableView ? 'グラフに戻る' : '貸借対照表を見る',
+                  ),
+                ],
               ),
             ],
           ),
           const SizedBox(height: 10),
 
-          // ★追加: 残高合わせボタン
+          // 残高合わせボタン
           if (!_isTableView)
             Container(
               margin: const EdgeInsets.only(bottom: 20),
