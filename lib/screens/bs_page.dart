@@ -3,7 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import '../database.dart';
 import '../widgets/t_account_table.dart';
-import 'pet_room_page.dart'; // ★追加: ペット部屋へ行くため
+import 'pet_room_page.dart'; // ★追加
 
 class BSPage extends StatefulWidget {
   final List<Transaction> transactions;
@@ -24,9 +24,8 @@ class BSPage extends StatefulWidget {
 }
 
 class _BSPageState extends State<BSPage> {
-  bool _isTableView = false; // 表モードかどうかのフラグ
+  bool _isTableView = false; 
 
-  // 残高合わせダイアログ
   Future<void> _showAdjustBalanceDialog() async {
     final assetAccounts = widget.accounts.where((a) => a.type == 'asset').toList();
     if (assetAccounts.isEmpty) return;
@@ -173,25 +172,23 @@ class _BSPageState extends State<BSPage> {
       padding: const EdgeInsets.all(16),
       child: Column(
         children: [
-          // ヘッダー (タイトル + ボタン類)
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text('現在の資産状況', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
               Row(
                 children: [
-                  // ★追加: ペット部屋へのボタン
-                  IconButton(
-                    icon: const Icon(Icons.pets, color: Colors.indigo), 
-                    tooltip: '資産ペット',
+                  // ★追加: ペット部屋へ行くボタン
+                  IconButton.filledTonal(
                     onPressed: () {
+                      HapticFeedback.lightImpact();
                       Navigator.of(context).push(
                         MaterialPageRoute(builder: (context) => PetRoomPage(db: widget.db)),
                       );
-                    },
+                    }, 
+                    icon: const Icon(Icons.pets, color: Colors.indigo),
                   ),
                   const SizedBox(width: 8),
-                  // 表示切り替えボタン
                   IconButton.filledTonal(
                     onPressed: () {
                       HapticFeedback.selectionClick();
@@ -206,7 +203,6 @@ class _BSPageState extends State<BSPage> {
           ),
           const SizedBox(height: 10),
 
-          // 残高合わせボタン
           if (!_isTableView)
             Container(
               margin: const EdgeInsets.only(bottom: 20),
@@ -222,9 +218,7 @@ class _BSPageState extends State<BSPage> {
               ),
             ),
 
-          // 切り替えロジック
           if (_isTableView) ...[
-            // === T字勘定モード ===
             TAccountTable(
               title: '貸借対照表 (B/S)',
               headerColor: Colors.indigo,
@@ -234,9 +228,6 @@ class _BSPageState extends State<BSPage> {
               rightTotal: totalLiabilities + netAssets,
             ),
           ] else ...[
-            // === サマリー＆グラフモード ===
-            
-            // 1. 純資産カード
             Card(
               elevation: 4,
               shadowColor: colorScheme.shadow.withOpacity(0.3),
@@ -272,7 +263,6 @@ class _BSPageState extends State<BSPage> {
             
             const SizedBox(height: 20),
 
-            // 2. 簡易グラフ (資産 vs 負債)
             if (totalAssets > 0)
               SizedBox(
                 height: 30,
@@ -309,7 +299,6 @@ class _BSPageState extends State<BSPage> {
             Align(alignment: Alignment.centerLeft, child: Text('資産の内訳', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: colorScheme.onSurface))),
             const SizedBox(height: 10),
 
-            // 3. 資産リスト
             ...assetsList.map((e) {
               final percent = totalAssets > 0 ? (e.value / totalAssets) : 0.0;
               return Card(

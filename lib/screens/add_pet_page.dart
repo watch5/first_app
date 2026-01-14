@@ -14,26 +14,20 @@ class AddPetPage extends StatefulWidget {
 class _AddPetPageState extends State<AddPetPage> {
   final _nameController = TextEditingController();
   final _priceController = TextEditingController();
-  final _lifeYearsController = TextEditingController(text: '4'); // デフォルト4年
+  final _lifeYearsController = TextEditingController(text: '4');
 
   DateTime _purchaseDate = DateTime.now();
-  int _selectedCharacterType = 0; // 0:PC, 1:車, 2:家, 3:その他
+  int _selectedCharacterType = 0;
 
-  // キャラクターの選択肢
-  final List<(int, IconData, String)> _characters = [
-    (0, Icons.computer, 'PC・ガジェット'),
-    (1, Icons.directions_car, '車・バイク'),
-    (2, Icons.home, '家・建物'),
-    (3, Icons.pets, 'その他'),
+  final List<(int, IconData, String, Color)> _characters = [
+    (0, Icons.laptop_mac, 'ガジェット', Colors.blue),
+    (1, Icons.directions_car_filled, '乗り物', Colors.red),
+    (2, Icons.home_work, '建物', Colors.orange),
+    (3, Icons.pets, 'その他', Colors.green),
   ];
 
-  // よくある耐用年数のプリセット
   final List<(String, int)> _lifePresets = [
-    ('PC', 4),
-    ('スマホ', 2),
-    ('車', 6),
-    ('家具', 8),
-    ('建物', 20),
+    ('PC/スマホ', 4), ('車', 6), ('家具', 8), ('建物', 22),
   ];
 
   Future<void> _selectDate() async {
@@ -41,12 +35,10 @@ class _AddPetPageState extends State<AddPetPage> {
       context: context,
       initialDate: _purchaseDate,
       firstDate: DateTime(1980),
-      lastDate: DateTime.now(), // 未来の資産は買えない
+      lastDate: DateTime.now(),
       locale: const Locale('ja'),
     );
-    if (picked != null) {
-      setState(() => _purchaseDate = picked);
-    }
+    if (picked != null) setState(() => _purchaseDate = picked);
   }
 
   void _save() async {
@@ -60,8 +52,7 @@ class _AddPetPageState extends State<AddPetPage> {
     }
 
     await widget.db.addAssetPet(name, price, _purchaseDate, lifeYears, _selectedCharacterType);
-    
-    if (mounted) Navigator.pop(context, true); // trueを返してリロードを促す
+    if (mounted) Navigator.pop(context, true);
   }
 
   @override
@@ -71,117 +62,86 @@ class _AddPetPageState extends State<AddPetPage> {
     return Scaffold(
       appBar: AppBar(title: const Text('新しい資産を迎える')),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 名前
-            TextField(
-              controller: _nameController,
-              decoration: const InputDecoration(
-                labelText: '資産の名前（ペット名）',
-                hintText: '例: MacBook Pro',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.edit),
-              ),
-            ),
+            Center(child: Text('どんな資産ですか？', style: TextStyle(color: colorScheme.secondary))),
             const SizedBox(height: 16),
-
-            // 金額
-            TextField(
-              controller: _priceController,
-              keyboardType: TextInputType.number,
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              decoration: const InputDecoration(
-                labelText: '購入価格 (円)',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.currency_yen),
-              ),
-            ),
-            const SizedBox(height: 16),
-
-            // 購入日
-            ListTile(
-              title: Text('購入日 (誕生日): ${DateFormat('yyyy/MM/dd').format(_purchaseDate)}'),
-              trailing: const Icon(Icons.calendar_today),
-              onTap: _selectDate,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8), side: BorderSide(color: Colors.grey.shade400)),
-            ),
-            const SizedBox(height: 24),
-
-            const Text('耐用年数 (寿命)', style: TextStyle(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            // 耐用年数プリセット
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: _lifePresets.map((preset) {
-                  return Padding(
-                    padding: const EdgeInsets.only(right: 8.0),
-                    child: ChoiceChip(
-                      label: Text('${preset.$1} (${preset.$2}年)'),
-                      selected: _lifeYearsController.text == preset.$2.toString(),
-                      onSelected: (selected) {
-                        if (selected) {
-                          setState(() => _lifeYearsController.text = preset.$2.toString());
-                        }
-                      },
-                    ),
-                  );
-                }).toList(),
-              ),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _lifeYearsController,
-              keyboardType: TextInputType.number,
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              decoration: const InputDecoration(
-                labelText: '年数',
-                border: OutlineInputBorder(),
-                suffixText: '年',
-              ),
-            ),
-            const SizedBox(height: 24),
-
-            const Text('キャラクター (見た目)', style: TextStyle(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: _characters.map((char) {
                 final isSelected = _selectedCharacterType == char.$1;
                 return GestureDetector(
-                  onTap: () => setState(() => _selectedCharacterType = char.$1),
-                  child: Column(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: isSelected ? colorScheme.primaryContainer : Colors.grey.shade100,
-                          shape: BoxShape.circle,
-                          border: isSelected ? Border.all(color: colorScheme.primary, width: 2) : null,
-                        ),
-                        child: Icon(char.$2, size: 30, color: isSelected ? colorScheme.primary : Colors.grey),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(char.$3, style: TextStyle(fontSize: 10, color: isSelected ? colorScheme.primary : Colors.grey)),
-                    ],
+                  onTap: () {
+                    HapticFeedback.selectionClick();
+                    setState(() => _selectedCharacterType = char.$1);
+                  },
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: isSelected ? char.$4.withValues(alpha: 0.1) : Colors.grey.shade50,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: isSelected ? char.$4 : Colors.grey.shade200, width: isSelected ? 3 : 1),
+                      boxShadow: isSelected ? [BoxShadow(color: char.$4.withValues(alpha: 0.3), blurRadius: 8, offset: const Offset(0, 4))] : [],
+                    ),
+                    child: Icon(char.$2, size: 32, color: isSelected ? char.$4 : Colors.grey),
                   ),
                 );
               }).toList(),
             ),
+            const SizedBox(height: 32),
+
+            TextField(controller: _nameController, decoration: const InputDecoration(labelText: '資産の名前（ペット名）', hintText: '例: MacBook Pro', border: OutlineInputBorder(), prefixIcon: Icon(Icons.edit))),
+            const SizedBox(height: 20),
+            TextField(controller: _priceController, keyboardType: TextInputType.number, inputFormatters: [FilteringTextInputFormatter.digitsOnly], decoration: const InputDecoration(labelText: '購入価格 (円)', border: OutlineInputBorder(), prefixIcon: Icon(Icons.currency_yen))),
+            const SizedBox(height: 20),
+            InkWell(
+              onTap: _selectDate,
+              borderRadius: BorderRadius.circular(12),
+              child: InputDecorator(
+                decoration: const InputDecoration(labelText: '購入日 (誕生日)', border: OutlineInputBorder(), prefixIcon: Icon(Icons.cake)),
+                child: Text(DateFormat('yyyy/MM/dd').format(_purchaseDate), style: const TextStyle(fontSize: 16)),
+              ),
+            ),
+            const SizedBox(height: 32),
+
+            const Text('耐用年数（寿命）', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              children: _lifePresets.map((preset) {
+                final isSelected = _lifeYearsController.text == preset.$2.toString();
+                return FilterChip(
+                  label: Text('${preset.$1} (${preset.$2}年)'),
+                  selected: isSelected,
+                  onSelected: (selected) {
+                    if (selected) {
+                      HapticFeedback.selectionClick();
+                      setState(() => _lifeYearsController.text = preset.$2.toString());
+                    }
+                  },
+                  checkmarkColor: Colors.white,
+                  selectedColor: colorScheme.primary,
+                  labelStyle: TextStyle(color: isSelected ? Colors.white : Colors.black),
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 16),
+            TextField(controller: _lifeYearsController, keyboardType: TextInputType.number, inputFormatters: [FilteringTextInputFormatter.digitsOnly], decoration: const InputDecoration(labelText: '年数を手動入力', border: OutlineInputBorder(), suffixText: '年')),
             
-            const SizedBox(height: 40),
-            
+            const SizedBox(height: 48),
             SizedBox(
               width: double.infinity,
-              height: 50,
+              height: 56,
               child: FilledButton.icon(
                 onPressed: _save,
                 icon: const Icon(Icons.check),
-                label: const Text('この子を迎え入れる', style: TextStyle(fontSize: 16)),
+                label: const Text('この子を迎え入れる', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               ),
             ),
+            const SizedBox(height: 40),
           ],
         ),
       ),
