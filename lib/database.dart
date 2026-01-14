@@ -162,14 +162,13 @@ class DailyBudget {
   }
 }
 
-// ★追加: 減価償却ペット（固定資産）
 class AssetPet {
   final int id;
-  final String name;       // ペット名（資産名）
-  final int price;         // 購入価格
-  final DateTime purchaseDate; // 購入日（誕生日）
-  final int lifeYears;     // 耐用年数（寿命）
-  final int characterType; // 0:ロボ, 1:犬, 2:猫...（見た目）
+  final String name;       
+  final int price;         
+  final DateTime purchaseDate; 
+  final int lifeYears;     
+  final int characterType; 
 
   AssetPet({
     required this.id,
@@ -180,25 +179,20 @@ class AssetPet {
     required this.characterType,
   });
 
-  // 現在の価値（HP）を計算
   int get currentValue {
     final now = DateTime.now();
-    // 日単位で経過を計算
     final daysPassed = now.difference(purchaseDate).inDays;
     final totalDays = lifeYears * 365;
     
-    if (daysPassed < 0) return price; // 未来の日付なら新品
-    if (daysPassed >= totalDays) return 1; // 償却完了（備忘価額1円）
+    if (daysPassed < 0) return price; 
+    if (daysPassed >= totalDays) return 1; 
 
-    // 定額法で計算
     final depreciation = (price / totalDays) * daysPassed;
     return (price - depreciation).toInt();
   }
 
-  // 元気度（0.0 〜 1.0）
   double get healthRatio {
      if (price == 0) return 0;
-     // 1円（引退）なら0
      if (currentValue <= 1) return 0.0;
      return (currentValue / price).clamp(0.0, 1.0);
   }
@@ -226,6 +220,14 @@ class AssetPet {
   }
 }
 
+// ★追加: 実績（トロフィー）
+class Achievement {
+  final String id; // ユニークID (例: 'first_tx')
+  final String unlockedAt; // 解除日
+
+  Achievement({required this.id, required this.unlockedAt});
+}
+
 // --- データベース管理クラス ---
 
 class MyDatabase {
@@ -244,23 +246,39 @@ class MyDatabase {
 
   Future<Database> _initDatabase() async {
     String path = join(await getDatabasesPath(), 'dualy_app.db');
-    // バージョンを4に上げて再作成を強制
+    // バージョンを5に上げて再作成を強制
     return await openDatabase(
       path,
-      version: 4, 
+      version: 5, 
       onCreate: (db, version) async {
         await _createTables(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
-        // 開発中なので簡易的に全再作成
-        if (oldVersion < 4) {
-          await db.execute('DROP TABLE IF EXISTS accounts');
-          await db.execute('DROP TABLE IF EXISTS transactions');
-          await db.execute('DROP TABLE IF EXISTS recurring_transactions');
-          await db.execute('DROP TABLE IF EXISTS templates');
-          await db.execute('DROP TABLE IF EXISTS daily_budgets');
-          await db.execute('DROP TABLE IF EXISTS asset_pets'); // 追加
-          await _createTables(db);
+        if (oldVersion < 5) {
+          // 既存テーブルは残しつつ、なければ作るように簡易対応
+          // (本来はALTER TABLEなどが適切ですが、開発中なので全消しの方が安全かもしれません)
+          // 今回は achievements テーブル追加だけなので execute で追加を試みます
+          try {
+             await db.execute('''
+              CREATE TABLE achievements(
+                id TEXT PRIMARY KEY,
+                unlocked_at TEXT
+              )
+            ''');
+          } catch (_) {
+            // すでにある場合は無視
+          }
+          
+          if (oldVersion < 4) {
+             // 4未満からのアップグレードの場合は既存ロジック
+             await db.execute('DROP TABLE IF EXISTS accounts');
+             await db.execute('DROP TABLE IF EXISTS transactions');
+             await db.execute('DROP TABLE IF EXISTS recurring_transactions');
+             await db.execute('DROP TABLE IF EXISTS templates');
+             await db.execute('DROP TABLE IF EXISTS daily_budgets');
+             await db.execute('DROP TABLE IF EXISTS asset_pets');
+             await _createTables(db);
+          }
         }
       },
     );
@@ -316,7 +334,6 @@ class MyDatabase {
         amount INTEGER
       )
     ''');
-    // ★追加: ペットテーブル
     await db.execute('''
       CREATE TABLE asset_pets(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -325,6 +342,13 @@ class MyDatabase {
         purchase_date TEXT,
         life_years INTEGER,
         character_type INTEGER
+      )
+    ''');
+    // ★追加: 実績テーブル
+    await db.execute('''
+      CREATE TABLE achievements(
+        id TEXT PRIMARY KEY,
+        unlocked_at TEXT
       )
     ''');
   }
@@ -523,7 +547,7 @@ class MyDatabase {
     );
   }
 
-  // --- ★追加: Asset Pets (固定資産) ---
+  // --- Asset Pets ---
   Future<List<AssetPet>> getAllAssetPets() async {
     final db = await database;
     final res = await db.query('asset_pets');
@@ -546,6 +570,25 @@ class MyDatabase {
     await db.delete('asset_pets', where: 'id = ?', whereArgs: [id]);
   }
 
+  // --- ★追加: 実績 (Achievements) 管理 ---
+  
+  // 解除済みの実績IDリストを取得
+  Future<List<String>> getUnlockedAchievements() async {
+    final db = await database;
+    final res = await db.query('achievements');
+    return res.map((m) => m['id'] as String).toList();
+  }
+
+  // 実績を解除
+  Future<void> unlockAchievement(String id) async {
+    final db = await database;
+    await db.insert(
+      'achievements',
+      {'id': id, 'unlocked_at': DateTime.now().toIso8601String()},
+      conflictAlgorithm: ConflictAlgorithm.ignore, // すでにあったら何もしない
+    );
+  }
+
   // --- Seeds ---
   Future<void> seedDefaultAccounts() async {
     final accounts = await getAllAccounts();
@@ -566,26 +609,18 @@ class MyDatabase {
     if (txs.isNotEmpty) return; 
 
     final now = DateTime.now();
-    
-    // 1. 先月の給料
     await addTransaction(2, 14, 250000, DateTime(now.year, now.month - 1, 25), note: '10月分給料');
-    // 2. 先月の家賃
     await addTransaction(13, 2, 80000, DateTime(now.year, now.month - 1, 27), note: '10月分家賃');
-    // 3. 今月の給料
     await addTransaction(2, 14, 250000, DateTime(now.year, now.month, 25), note: '11月分給料');
-
-    // 4. 日々の買い物
     await addTransaction(10, 1, 1200, DateTime(now.year, now.month, now.day - 5), note: 'ランチ');
     await addTransaction(10, 1, 850, DateTime(now.year, now.month, now.day - 3), note: 'カフェ');
     await addTransaction(10, 1, 3500, DateTime(now.year, now.month, now.day - 1), note: '飲み会');
     await addTransaction(11, 2, 5000, DateTime(now.year, now.month, now.day - 10), note: 'Amazon');
 
-    // 5. 予算設定
     await updateAccountBudget(10, 30000);
     await setDailyBudget(DateTime(now.year, now.month, now.day), 2000);
 
-    // ★追加: テスト用のペット（資産）も作っておく
-    await addAssetPet('MacBook Pro', 300000, DateTime(now.year, now.month - 3, 1), 4, 0); // 3ヶ月前のPC
-    await addAssetPet('社用車', 1500000, DateTime(now.year - 2, 1, 1), 6, 1); // 2年前の車
+    await addAssetPet('MacBook Pro', 300000, DateTime(now.year, now.month - 3, 1), 4, 0); 
+    await addAssetPet('社用車', 1500000, DateTime(now.year - 2, 1, 1), 6, 1); 
   }
 }

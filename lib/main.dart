@@ -21,7 +21,8 @@ import 'screens/template_settings_page.dart';
 import 'screens/recurring_settings_page.dart'; 
 import 'widgets/ad_banner.dart';
 import 'screens/calendar_page.dart';
-import 'screens/pet_room_page.dart'; // ★追加: ドロワーからペット部屋へ行くため
+import 'screens/pet_room_page.dart'; 
+import 'screens/achievement_page.dart'; // ★追加: 実績博物館
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -234,10 +235,9 @@ class _MainScreenState extends State<MainScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Dualy'),
-        // ★actionsにあった設定ボタンはドロワーに移動したため削除しました
       ),
       
-      // ★追加: ドロワー (サイドメニュー)
+      // ★ドロワー (サイドメニュー)
       drawer: Drawer(
         child: ListView(
           padding: EdgeInsets.zero,
@@ -256,14 +256,25 @@ class _MainScreenState extends State<MainScreen> {
               ),
             ),
             
-            // ペット部屋へのリンク
+            // ペット部屋
             ListTile(
               leading: const Icon(Icons.pets, color: Colors.orange),
               title: const Text('資産ペット部屋'),
               subtitle: const Text('減価償却を楽しく管理'),
               onTap: () {
-                Navigator.pop(context); // ドロワーを閉じる
+                Navigator.pop(context); 
                 Navigator.of(context).push(MaterialPageRoute(builder: (context) => PetRoomPage(db: _db)));
+              },
+            ),
+
+            // 実績博物館
+            ListTile(
+              leading: const Icon(Icons.emoji_events, color: Colors.amber),
+              title: const Text('実績博物館'),
+              subtitle: const Text('獲得したトロフィーを確認'),
+              onTap: () {
+                Navigator.pop(context); 
+                Navigator.of(context).push(MaterialPageRoute(builder: (context) => AchievementPage(db: _db)));
               },
             ),
 
@@ -301,7 +312,6 @@ class _MainScreenState extends State<MainScreen> {
           ],
         ),
       ),
-      // ★ドロワー追加ここまで
 
       body: Column(
         children: [
