@@ -22,7 +22,8 @@ import 'screens/recurring_settings_page.dart';
 import 'widgets/ad_banner.dart';
 import 'screens/calendar_page.dart';
 import 'screens/pet_room_page.dart'; 
-import 'screens/achievement_page.dart'; // ★追加: 実績博物館
+import 'screens/achievement_page.dart'; // 実績博物館
+import 'screens/export_page.dart'; // ★追加: CSVエクスポート
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -275,6 +276,17 @@ class _MainScreenState extends State<MainScreen> {
               onTap: () {
                 Navigator.pop(context); 
                 Navigator.of(context).push(MaterialPageRoute(builder: (context) => AchievementPage(db: _db)));
+              },
+            ),
+
+            // ★追加: データ出力 (CSV)
+            ListTile(
+              leading: const Icon(Icons.file_download, color: Colors.teal),
+              title: const Text('データ出力'),
+              subtitle: const Text('CSVファイルでバックアップ'),
+              onTap: () {
+                Navigator.pop(context); 
+                Navigator.of(context).push(MaterialPageRoute(builder: (context) => ExportPage(db: _db)));
               },
             ),
 

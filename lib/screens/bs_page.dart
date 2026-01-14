@@ -1,9 +1,10 @@
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import '../database.dart';
 import '../widgets/t_account_table.dart';
-import 'pet_room_page.dart'; // ★追加
+import 'pet_room_page.dart';
 
 class BSPage extends StatefulWidget {
   final List<Transaction> transactions;
@@ -27,12 +28,11 @@ class _BSPageState extends State<BSPage> {
   bool _isTableView = false; 
 
   Future<void> _showAdjustBalanceDialog() async {
+    // (既存の調整ロジックはそのまま維持)
     final assetAccounts = widget.accounts.where((a) => a.type == 'asset').toList();
     if (assetAccounts.isEmpty) return;
-
     Account selectedAccount = assetAccounts.first;
     final amountController = TextEditingController();
-
     int getCurrentBookBalance(int accountId) {
       int balance = 0;
       for (var t in widget.transactions) {
@@ -41,43 +41,28 @@ class _BSPageState extends State<BSPage> {
       }
       return balance;
     }
-
     await showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setState) {
           final currentBookBalance = getCurrentBookBalance(selectedAccount.id);
-          
           return AlertDialog(
             title: const Text('残高合わせ（ズレ補正）'),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text('「実際の残高」を入力してください。\n計算上の残高との差額を「使途不明金」として自動調整します。', style: TextStyle(fontSize: 12)),
+                const Text('「実際の残高」を入力してください。差額を自動調整します。', style: TextStyle(fontSize: 12)),
                 const SizedBox(height: 20),
                 DropdownButtonFormField<Account>(
                   initialValue: selectedAccount,
                   decoration: const InputDecoration(labelText: '合わせる口座'),
                   items: assetAccounts.map((a) => DropdownMenuItem(value: a, child: Text(a.name))).toList(),
-                  onChanged: (val) {
-                    if (val != null) {
-                      setState(() {
-                        selectedAccount = val;
-                        amountController.clear();
-                      });
-                    }
-                  },
+                  onChanged: (val) { if (val != null) setState(() { selectedAccount = val; amountController.clear(); }); },
                 ),
-                const SizedBox(height: 10),
                 TextField(
                   controller: amountController,
                   keyboardType: TextInputType.number,
-                  decoration: InputDecoration(
-                    labelText: '実際いくらある？',
-                    hintText: '現在の${selectedAccount.name}の残高',
-                    suffixText: '円',
-                    helperText: 'アプリ上の計算: ${NumberFormat("#,###").format(currentBookBalance)}円',
-                  ),
+                  decoration: InputDecoration(labelText: '実際いくらある？', hintText: '現在の残高', suffixText: '円', helperText: '帳簿: ${NumberFormat("#,###").format(currentBookBalance)}円'),
                   autofocus: true,
                 ),
               ],
@@ -88,36 +73,17 @@ class _BSPageState extends State<BSPage> {
                 onPressed: () async {
                   final actualBalance = int.tryParse(amountController.text);
                   if (actualBalance == null) return;
-
                   final diff = actualBalance - currentBookBalance;
-                  if (diff == 0) {
-                    Navigator.pop(ctx);
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('ズレはありませんでした！完璧です✨')));
-                    return;
-                  }
-
-                  HapticFeedback.mediumImpact();
+                  if (diff == 0) { Navigator.pop(ctx); return; }
                   
                   Account? adjAccount;
-                  try {
-                    adjAccount = widget.accounts.firstWhere((a) => a.name == '使途不明金' || a.name == '残高調整');
-                  } catch (e) {
-                    await widget.db.addAccount('使途不明金', 'expense', null, 'variable');
-                    final newAccounts = await widget.db.getAllAccounts();
-                    adjAccount = newAccounts.firstWhere((a) => a.name == '使途不明金');
-                  }
+                  try { adjAccount = widget.accounts.firstWhere((a) => a.name == '使途不明金' || a.name == '残高調整'); } 
+                  catch (e) { await widget.db.addAccount('使途不明金', 'expense', null, 'variable'); final newAccounts = await widget.db.getAllAccounts(); adjAccount = newAccounts.firstWhere((a) => a.name == '使途不明金'); }
 
-                  if (diff > 0) {
-                    await widget.db.addTransaction(selectedAccount.id, adjAccount!.id, diff, DateTime.now(), isAuto: true);
-                  } else {
-                    await widget.db.addTransaction(adjAccount!.id, selectedAccount.id, diff.abs(), DateTime.now(), isAuto: true);
-                  }
+                  if (diff > 0) await widget.db.addTransaction(selectedAccount.id, adjAccount!.id, diff, DateTime.now(), isAuto: true);
+                  else await widget.db.addTransaction(adjAccount!.id, selectedAccount.id, diff.abs(), DateTime.now(), isAuto: true);
 
-                  if (context.mounted) {
-                    Navigator.pop(ctx);
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${diff.abs()}円のズレを調整しました')));
-                    widget.onDataChanged();
-                  }
+                  if (context.mounted) { Navigator.pop(ctx); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${diff.abs()}円のズレを調整しました'))); widget.onDataChanged(); }
                 },
                 child: const Text('調整実行'),
               ),
@@ -134,10 +100,7 @@ class _BSPageState extends State<BSPage> {
     final colorScheme = Theme.of(context).colorScheme;
 
     Map<int, int> balances = {};
-    for (var a in widget.accounts) {
-      balances[a.id] = 0;
-    }
-
+    for (var a in widget.accounts) balances[a.id] = 0;
     for (var t in widget.transactions) {
       balances[t.debitAccountId] = (balances[t.debitAccountId] ?? 0) + t.amount;
       balances[t.creditAccountId] = (balances[t.creditAccountId] ?? 0) - t.amount;
@@ -152,189 +115,195 @@ class _BSPageState extends State<BSPage> {
     for (var a in widget.accounts) {
       final amount = balances[a.id] ?? 0;
       if (amount == 0) continue;
-
-      if (a.type == 'asset') {
-        assetsList.add(MapEntry(a.name, amount));
-        totalAssets += amount;
-      } else if (a.type == 'liability') {
-        liabilitiesList.add(MapEntry(a.name, -amount));
-        totalLiabilities += -amount;
-      }
+      if (a.type == 'asset') { assetsList.add(MapEntry(a.name, amount)); totalAssets += amount; } 
+      else if (a.type == 'liability') { liabilitiesList.add(MapEntry(a.name, -amount)); totalLiabilities += -amount; }
     }
 
     final netAssets = totalAssets - totalLiabilities;
     liabilitiesList.add(MapEntry('純資産', netAssets));
-
     assetsList.sort((a, b) => b.value.compareTo(a.value));
     liabilitiesList.sort((a, b) => b.value.compareTo(a.value));
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text('現在の資産状況', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-              Row(
-                children: [
-                  // ★追加: ペット部屋へ行くボタン
-                  IconButton.filledTonal(
-                    onPressed: () {
-                      HapticFeedback.lightImpact();
-                      Navigator.of(context).push(
-                        MaterialPageRoute(builder: (context) => PetRoomPage(db: widget.db)),
-                      );
-                    }, 
-                    icon: const Icon(Icons.pets, color: Colors.indigo),
-                  ),
-                  const SizedBox(width: 8),
-                  IconButton.filledTonal(
-                    onPressed: () {
-                      HapticFeedback.selectionClick();
-                      setState(() => _isTableView = !_isTableView);
-                    },
-                    icon: Icon(_isTableView ? Icons.pie_chart : Icons.description),
-                    tooltip: _isTableView ? 'グラフに戻る' : '貸借対照表を見る',
-                  ),
-                ],
-              ),
+    // 自己資本比率
+    double equityRatio = totalAssets > 0 ? (netAssets / totalAssets * 100) : 0;
+
+    return Scaffold(
+      body: CustomScrollView(
+        slivers: [
+          SliverAppBar(
+            title: const Text('財政状態 (B/S)'),
+            floating: true,
+            actions: [
+              IconButton.filledTonal(onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (context) => PetRoomPage(db: widget.db))), icon: const Icon(Icons.pets, color: Colors.indigo)),
+              const SizedBox(width: 8),
+              IconButton.filledTonal(onPressed: () => setState(() => _isTableView = !_isTableView), icon: Icon(_isTableView ? Icons.pie_chart : Icons.description)),
+              const SizedBox(width: 8),
             ],
           ),
-          const SizedBox(height: 10),
-
-          if (!_isTableView)
-            Container(
-              margin: const EdgeInsets.only(bottom: 20),
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: _showAdjustBalanceDialog,
-                icon: const Icon(Icons.build_circle_outlined),
-                label: const Text('財布の中身が合わない時はこちら (残高調整)'),
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  side: BorderSide(color: colorScheme.primary.withOpacity(0.5)),
+          SliverList(
+            delegate: SliverChildListDelegate([
+              if (_isTableView) ...[
+                Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: TAccountTable(title: '貸借対照表 (B/S)', headerColor: Colors.indigo, leftItems: assetsList, rightItems: liabilitiesList, leftTotal: totalAssets, rightTotal: totalLiabilities + netAssets),
                 ),
-              ),
-            ),
+              ] else ...[
+                // 1. 純資産カード
+                _buildNetWorthCard(context, netAssets, equityRatio, totalAssets, totalLiabilities, fmt),
 
-          if (_isTableView) ...[
-            TAccountTable(
-              title: '貸借対照表 (B/S)',
-              headerColor: Colors.indigo,
-              leftItems: assetsList,
-              rightItems: liabilitiesList,
-              leftTotal: totalAssets,
-              rightTotal: totalLiabilities + netAssets,
-            ),
-          ] else ...[
-            Card(
-              elevation: 4,
-              shadowColor: colorScheme.shadow.withOpacity(0.3),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-              color: colorScheme.surfaceContainer,
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  children: [
-                    Text('純資産 (あなたの本当の財産)', style: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 14)),
-                    const SizedBox(height: 5),
-                    Text(
-                      '${fmt.format(netAssets)} 円',
-                      style: TextStyle(
-                        fontSize: 32, 
-                        fontWeight: FontWeight.bold,
-                        color: netAssets >= 0 ? colorScheme.primary : colorScheme.error,
-                      ),
-                    ),
-                    const Divider(height: 30),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                // 2. 資産構成グラフ (PieChart)
+                if (totalAssets > 0)
+                  SizedBox(
+                    height: 250,
+                    child: Stack(
+                      alignment: Alignment.center,
                       children: [
-                        _buildSummaryItem('総資産', totalAssets, Colors.blue),
-                        Container(width: 1, height: 40, color: colorScheme.outlineVariant),
-                        _buildSummaryItem('負債', totalLiabilities, Colors.orange),
+                        PieChart(
+                          PieChartData(
+                            sectionsSpace: 2,
+                            centerSpaceRadius: 40,
+                            sections: _buildPieSections(assetsList, totalAssets),
+                          ),
+                        ),
+                        const Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.account_balance_wallet, color: Colors.grey),
+                            Text("資産内訳", style: TextStyle(fontSize: 10, color: Colors.grey)),
+                          ],
+                        )
                       ],
                     ),
-                  ],
-                ),
-              ),
-            ),
-            
-            const SizedBox(height: 20),
+                  ),
 
-            if (totalAssets > 0)
-              SizedBox(
-                height: 30,
-                child: Row(
-                  children: [
-                    Expanded(
-                      flex: totalAssets > 0 ? totalAssets : 1,
-                      child: Container(
-                        decoration: const BoxDecoration(
-                          color: Colors.blue,
-                          borderRadius: BorderRadius.horizontal(left: Radius.circular(8)),
-                        ),
-                        alignment: Alignment.center,
-                        child: const Text('資産', style: TextStyle(color: Colors.white, fontSize: 10)),
-                      ),
-                    ),
-                    if (totalLiabilities > 0)
-                      Expanded(
-                        flex: totalLiabilities,
-                        child: Container(
-                          decoration: const BoxDecoration(
-                            color: Colors.orange,
-                            borderRadius: BorderRadius.horizontal(right: Radius.circular(8)),
-                          ),
-                          alignment: Alignment.center,
-                          child: const Text('負債', style: TextStyle(color: Colors.white, fontSize: 10)),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-
-            const SizedBox(height: 20),
-            Align(alignment: Alignment.centerLeft, child: Text('資産の内訳', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: colorScheme.onSurface))),
-            const SizedBox(height: 10),
-
-            ...assetsList.map((e) {
-              final percent = totalAssets > 0 ? (e.value / totalAssets) : 0.0;
-              return Card(
-                elevation: 0,
-                color: colorScheme.surfaceContainerLow,
-                margin: const EdgeInsets.only(bottom: 8),
-                child: ListTile(
-                  leading: const CircleAvatar(backgroundColor: Colors.blueAccent, child: Icon(Icons.account_balance_wallet, color: Colors.white, size: 18)),
-                  title: Text(e.key, style: const TextStyle(fontWeight: FontWeight.bold)),
-                  trailing: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.end,
+                // 3. 資産・負債バランスバー
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Column(
                     children: [
-                      Text('${fmt.format(e.value)} 円', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                      Text('${(percent * 100).toStringAsFixed(1)}%', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text('総資産: ¥${fmt.format(totalAssets)}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                          Text('負債: ¥${fmt.format(totalLiabilities)}', style: const TextStyle(color: Colors.red)),
+                        ],
+                      ),
+                      const SizedBox(height: 5),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: LinearProgressIndicator(
+                          value: totalAssets > 0 ? (totalLiabilities / totalAssets).clamp(0.0, 1.0) : 0,
+                          backgroundColor: Colors.blueAccent,
+                          color: Colors.redAccent,
+                          minHeight: 12,
+                        ),
+                      ),
+                      const Align(alignment: Alignment.centerRight, child: Text('赤色: 負債比率', style: TextStyle(fontSize: 10, color: Colors.grey))),
                     ],
                   ),
                 ),
-              );
-            }),
-          ],
+                
+                const SizedBox(height: 20),
+                // 4. 残高調整ボタン
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: OutlinedButton.icon(
+                    onPressed: _showAdjustBalanceDialog,
+                    icon: const Icon(Icons.build_circle_outlined),
+                    label: const Text('残高が合わない時はこちら (調整)'),
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                // 5. 資産リスト詳細
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: const Text('資産リスト', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                ),
+                ...assetsList.map((e) => _buildAssetTile(e, totalAssets, fmt)),
+                const SizedBox(height: 40),
+              ],
+            ]),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildSummaryItem(String title, int amount, Color color) {
-    final fmt = NumberFormat("#,###");
-    return Column(
-      children: [
-        Text(title, style: const TextStyle(fontSize: 12, color: Colors.grey)),
-        Text(
-          fmt.format(amount), 
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: color),
+  Widget _buildNetWorthCard(BuildContext context, int netWorth, double equityRatio, int assets, int liabilities, NumberFormat fmt) {
+    return Container(
+      margin: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Colors.indigo.shade800, Colors.indigo.shade500],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
         ),
-      ],
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [BoxShadow(color: Colors.indigo.withOpacity(0.4), blurRadius: 12, offset: const Offset(0, 6))],
+      ),
+      child: Column(
+        children: [
+          const Text('純資産 (Net Worth)', style: TextStyle(color: Colors.white70, fontSize: 12)),
+          const SizedBox(height: 4),
+          Text('¥ ${fmt.format(netWorth)}', style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              Column(children: [
+                const Text('自己資本比率', style: TextStyle(color: Colors.white70, fontSize: 11)),
+                Text('${equityRatio.toStringAsFixed(1)}%', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+              ]),
+              Container(width: 1, height: 30, color: Colors.white24),
+              Column(children: [
+                const Text('負債比率', style: TextStyle(color: Colors.white70, fontSize: 11)),
+                Text('${(100 - equityRatio).toStringAsFixed(1)}%', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+              ]),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  List<PieChartSectionData> _buildPieSections(List<MapEntry<String, int>> items, int total) {
+    // 上位5件 + その他
+    if (total == 0) return [];
+    List<Color> colors = [Colors.blue, Colors.teal, Colors.amber, Colors.orange, Colors.purple, Colors.grey];
+    
+    return List.generate(items.length, (i) {
+      final isLarge = i < 5;
+      final value = items[i].value.toDouble();
+      final percent = (value / total * 100);
+      
+      return PieChartSectionData(
+        color: colors[i % colors.length],
+        value: value,
+        title: isLarge && percent > 5 ? '${percent.toStringAsFixed(0)}%' : '',
+        radius: isLarge ? 50 : 40,
+        titleStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white),
+      );
+    });
+  }
+
+  Widget _buildAssetTile(MapEntry<String, int> item, int total, NumberFormat fmt) {
+    return ListTile(
+      leading: Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(color: Colors.blue.withOpacity(0.1), shape: BoxShape.circle),
+        child: const Icon(Icons.account_balance_wallet, color: Colors.blue, size: 20),
+      ),
+      title: Text(item.key),
+      trailing: Column(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text('¥${fmt.format(item.value)}', style: const TextStyle(fontWeight: FontWeight.bold)),
+          Text('${(item.value / total * 100).toStringAsFixed(1)}%', style: const TextStyle(fontSize: 10, color: Colors.grey)),
+        ],
+      ),
     );
   }
 }

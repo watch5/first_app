@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:grouped_list/grouped_list.dart';
+import 'dart:ui'; // FontFeature用
 import '../database.dart';
 
 class TransactionListScreen extends StatelessWidget {
@@ -21,11 +22,19 @@ class TransactionListScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (transactions.isEmpty) {
-      return const Center(child: Text('まだ取引がありません\n右下のボタンから記帳してみましょう', textAlign: TextAlign.center));
+      return const Center(
+        child: Text(
+          'まだ取引がありません\n右下のボタンから記帳してみましょう',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: Colors.grey),
+        ),
+      );
     }
 
-    final formatter = NumberFormat("#,###");
+    // ★修正: decimalDigits: 0 で小数点を確実に非表示にする
+    final formatter = NumberFormat.currency(locale: 'ja', symbol: '¥', decimalDigits: 0);
     final colorScheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return GroupedListView<Transaction, DateTime>(
       elements: transactions,
@@ -52,7 +61,10 @@ class TransactionListScreen extends StatelessWidget {
 
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          color: colorScheme.surfaceContainerHighest.withOpacity(0.5),
+          decoration: BoxDecoration(
+            color: isDark ? colorScheme.surfaceContainerHighest : colorScheme.surfaceVariant.withOpacity(0.5),
+            border: Border(bottom: BorderSide(color: colorScheme.outlineVariant.withOpacity(0.2))),
+          ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -61,8 +73,8 @@ class TransactionListScreen extends StatelessWidget {
                 style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.onSurfaceVariant)
               ),
               Text(
-                '計 ${formatter.format(dayTotal)}円', 
-                style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)
+                '計 ${formatter.format(dayTotal)}', // 記号付きフォーマッタを使用
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: colorScheme.onSurfaceVariant)
               ),
             ],
           ),
@@ -71,60 +83,95 @@ class TransactionListScreen extends StatelessWidget {
       
       // 取引カード
       itemBuilder: (context, t) {
-        final debitName = accounts.firstWhere((a) => a.id == t.debitAccountId, orElse: () => const Account(id: -1, name: '不明', type: '', costType: 'variable')).name;
-        final creditName = accounts.firstWhere((a) => a.id == t.creditAccountId, orElse: () => const Account(id: -1, name: '不明', type: '', costType: 'variable')).name;
+        final debit = accounts.firstWhere((a) => a.id == t.debitAccountId, orElse: () => const Account(id: -1, name: '不明', type: '', costType: 'variable'));
+        final credit = accounts.firstWhere((a) => a.id == t.creditAccountId, orElse: () => const Account(id: -1, name: '不明', type: '', costType: 'variable'));
 
-        return Card(
-          elevation: 0,
+        // ★視認性向上: 取引タイプに応じた色とアイコン
+        Color amountColor;
+        IconData icon;
+        Color iconBgColor;
+
+        if (debit.type == 'expense') {
+          // 支出
+          amountColor = Colors.redAccent;
+          icon = Icons.shopping_cart_outlined;
+          iconBgColor = Colors.redAccent.withOpacity(0.1);
+        } else if (credit.type == 'income') {
+          // 収入
+          amountColor = Colors.green;
+          icon = Icons.savings_outlined;
+          iconBgColor = Colors.green.withOpacity(0.1);
+        } else {
+          // 振替など
+          amountColor = isDark ? Colors.white70 : Colors.black87;
+          icon = Icons.swap_horiz;
+          iconBgColor = isDark ? Colors.grey.withOpacity(0.2) : Colors.grey.withOpacity(0.1);
+        }
+
+        return Material(
           color: colorScheme.surface,
-          margin: const EdgeInsets.symmetric(horizontal: 0, vertical: 0),
-          shape: Border(bottom: BorderSide(color: colorScheme.outlineVariant.withOpacity(0.2))),
           child: InkWell(
             onTap: () => onEdit(t),
             onLongPress: () {
                HapticFeedback.heavyImpact();
                _showDeleteDialog(context, t, formatter);
             },
-            child: Padding(
+            child: Container(
+              decoration: BoxDecoration(
+                border: Border(bottom: BorderSide(color: colorScheme.outlineVariant.withOpacity(0.2))),
+              ),
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               child: Row(
                 children: [
-                  // ★修正: isAuto は int (0 or 1) なので、1と比較して判定する
-                  if (t.isAuto == 1) ...[
-                    Padding(
-                      padding: const EdgeInsets.only(right: 12),
-                      child: Icon(Icons.link, size: 20, color: colorScheme.primary),
+                  // アイコン
+                  Container(
+                    width: 40, 
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: iconBgColor,
+                      shape: BoxShape.circle,
                     ),
-                  ],
+                    child: Icon(icon, color: amountColor, size: 20),
+                  ),
+                  const SizedBox(width: 16),
 
-                  // 左：科目
+                  // 中央情報（科目名など）
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(debitName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                        Row(
+                          children: [
+                            Text(debit.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                            if (t.isAuto == 1) ...[
+                              const SizedBox(width: 6),
+                              Icon(Icons.autorenew, size: 14, color: colorScheme.primary.withOpacity(0.7)),
+                            ],
+                          ],
+                        ),
                         const SizedBox(height: 2),
                         Row(
                           children: [
-                            const Icon(Icons.payment, size: 12, color: Colors.grey),
-                            const SizedBox(width: 4),
-                            Text(creditName, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                            Text('from ', style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
+                            Text(credit.name, style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
                           ],
                         ),
                       ],
                     ),
                   ),
-                  // 右：金額
+
+                  // 金額
                   Text(
-                    '¥ ${formatter.format(t.amount)}',
+                    formatter.format(t.amount),
                     style: TextStyle(
-                      fontSize: 18, 
+                      fontSize: 17, 
                       fontWeight: FontWeight.bold,
-                      color: colorScheme.primary,
+                      color: amountColor,
+                      fontFeatures: const [FontFeature.tabularFigures()], // 数字の幅を揃える
                     ),
                   ),
                   const SizedBox(width: 8),
-                  const Icon(Icons.chevron_right, size: 16, color: Colors.grey),
+                  Icon(Icons.chevron_right, size: 18, color: Colors.grey.withOpacity(0.3)),
                 ],
               ),
             ),
@@ -143,7 +190,7 @@ class TransactionListScreen extends StatelessWidget {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('削除しますか？'),
-        content: Text('$dateStr の取引\n${formatter.format(t.amount)}円 を削除します。'),
+        content: Text('$dateStr の取引\n${formatter.format(t.amount)} を削除します。'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('キャンセル')),
           TextButton(
