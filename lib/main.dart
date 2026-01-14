@@ -23,7 +23,8 @@ import 'widgets/ad_banner.dart';
 import 'screens/calendar_page.dart';
 import 'screens/pet_room_page.dart'; 
 import 'screens/achievement_page.dart'; // 実績博物館
-import 'screens/export_page.dart'; // ★追加: CSVエクスポート
+import 'screens/export_page.dart'; // CSVエクスポート
+import 'screens/import_page.dart'; // CSVインポート
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -279,7 +280,7 @@ class _MainScreenState extends State<MainScreen> {
               },
             ),
 
-            // ★追加: データ出力 (CSV)
+            // データ出力 (CSV)
             ListTile(
               leading: const Icon(Icons.file_download, color: Colors.teal),
               title: const Text('データ出力'),
@@ -287,6 +288,18 @@ class _MainScreenState extends State<MainScreen> {
               onTap: () {
                 Navigator.pop(context); 
                 Navigator.of(context).push(MaterialPageRoute(builder: (context) => ExportPage(db: _db)));
+              },
+            ),
+
+            // ★追加: データ取り込み (CSV)
+            ListTile(
+              leading: const Icon(Icons.file_upload, color: Colors.orange),
+              title: const Text('データ取り込み'),
+              subtitle: const Text('CSVファイルから復元'),
+              onTap: () async {
+                Navigator.pop(context); 
+                await Navigator.of(context).push(MaterialPageRoute(builder: (context) => ImportPage(db: _db)));
+                _loadData(); // インポート後にデータをリロード
               },
             ),
 
