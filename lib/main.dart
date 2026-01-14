@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-// ★追加: 日本語対応用パッケージ
 import 'package:flutter_localizations/flutter_localizations.dart'; 
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:intl/date_symbol_data_local.dart';
@@ -22,10 +21,11 @@ import 'screens/template_settings_page.dart';
 import 'screens/recurring_settings_page.dart'; 
 import 'widgets/ad_banner.dart';
 import 'screens/calendar_page.dart';
+import 'screens/pet_room_page.dart'; // ★追加: ドロワーからペット部屋へ行くため
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await initializeDateFormatting('ja'); // 'ja'を指定しておくと安全です
+  await initializeDateFormatting('ja'); 
   await MobileAds.instance.initialize();
   runApp(const MyApp());
 }
@@ -50,16 +50,14 @@ class MyApp extends StatelessWidget {
       ),
       themeMode: ThemeMode.system, 
       
-      // ★追加: 日本語化の設定ここから
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
       supportedLocales: const [
-        Locale('ja'), // 日本語
+        Locale('ja'), 
       ],
-      // ★追加ここまで
 
       home: const AuthPage(), 
     );
@@ -221,48 +219,10 @@ class _MainScreenState extends State<MainScreen> {
     await _loadData();
   }
 
-  void _openSettings() {
-    HapticFeedback.lightImpact();
-    showModalBottomSheet(
-      context: context,
-      builder: (ctx) => Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          ListTile(
-            leading: const Icon(Icons.settings),
-            title: const Text('科目の管理'),
-            onTap: () async {
-              Navigator.pop(ctx);
-              await Navigator.of(context).push(MaterialPageRoute(builder: (context) => AccountSettingsPage(db: _db)));
-              _loadData(); 
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.repeat),
-            title: const Text('固定費・サブスクの管理'),
-            subtitle: const Text('家賃や給料日を登録して予測に反映'),
-            onTap: () async {
-              Navigator.pop(ctx);
-              await Navigator.of(context).push(MaterialPageRoute(builder: (context) => RecurringSettingsPage(db: _db)));
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.bookmark),
-            title: const Text('テンプレートの管理'),
-            subtitle: const Text('よく使う取引（手動入力用）'),
-            onTap: () async {
-              Navigator.pop(ctx);
-              await Navigator.of(context).push(MaterialPageRoute(builder: (context) => TemplateSettingsPage(db: _db)));
-            },
-          ),
-          const SizedBox(height: 20),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    
     final List<Widget> screens = [
       CalendarPage(db: _db), 
       BudgetPage(transactions: _transactions, accounts: _accounts, onDataChanged: _loadData), 
@@ -274,10 +234,75 @@ class _MainScreenState extends State<MainScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Dualy'),
-        actions: [
-          IconButton(icon: const Icon(Icons.settings), onPressed: _openSettings),
-        ],
+        // ★actionsにあった設定ボタンはドロワーに移動したため削除しました
       ),
+      
+      // ★追加: ドロワー (サイドメニュー)
+      drawer: Drawer(
+        child: ListView(
+          padding: EdgeInsets.zero,
+          children: [
+            DrawerHeader(
+              decoration: BoxDecoration(color: colorScheme.primary),
+              child: const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  Icon(Icons.account_balance_wallet, color: Colors.white, size: 48),
+                  SizedBox(height: 10),
+                  Text('Dualy', style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
+                  Text('複式簿記の家計簿アプリ', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                ],
+              ),
+            ),
+            
+            // ペット部屋へのリンク
+            ListTile(
+              leading: const Icon(Icons.pets, color: Colors.orange),
+              title: const Text('資産ペット部屋'),
+              subtitle: const Text('減価償却を楽しく管理'),
+              onTap: () {
+                Navigator.pop(context); // ドロワーを閉じる
+                Navigator.of(context).push(MaterialPageRoute(builder: (context) => PetRoomPage(db: _db)));
+              },
+            ),
+
+            const Divider(),
+            Padding(
+              padding: const EdgeInsets.only(left: 16, top: 8, bottom: 8),
+              child: Text('設定・管理', style: TextStyle(color: colorScheme.outline)),
+            ),
+
+            ListTile(
+              leading: const Icon(Icons.settings),
+              title: const Text('科目の管理'),
+              onTap: () async {
+                Navigator.pop(context);
+                await Navigator.of(context).push(MaterialPageRoute(builder: (context) => AccountSettingsPage(db: _db)));
+                _loadData(); 
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.repeat),
+              title: const Text('固定費・サブスクの管理'),
+              onTap: () async {
+                Navigator.pop(context);
+                await Navigator.of(context).push(MaterialPageRoute(builder: (context) => RecurringSettingsPage(db: _db)));
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.bookmark),
+              title: const Text('テンプレートの管理'),
+              onTap: () async {
+                Navigator.pop(context);
+                await Navigator.of(context).push(MaterialPageRoute(builder: (context) => TemplateSettingsPage(db: _db)));
+              },
+            ),
+          ],
+        ),
+      ),
+      // ★ドロワー追加ここまで
+
       body: Column(
         children: [
           Expanded(child: screens[_selectedIndex]),
