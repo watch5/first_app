@@ -22,9 +22,10 @@ import 'screens/recurring_settings_page.dart';
 import 'widgets/ad_banner.dart';
 import 'screens/calendar_page.dart';
 import 'screens/pet_room_page.dart'; 
-import 'screens/achievement_page.dart'; // 実績博物館
-import 'screens/export_page.dart'; // CSVエクスポート
-import 'screens/import_page.dart'; // CSVインポート
+import 'screens/achievement_page.dart'; 
+import 'screens/export_page.dart'; 
+import 'screens/import_page.dart'; 
+import 'screens/receipt_scan_page.dart'; // ★追加: レシートスキャン用
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -239,7 +240,7 @@ class _MainScreenState extends State<MainScreen> {
         title: const Text('Dualy'),
       ),
       
-      // ★ドロワー (サイドメニュー)
+      // ドロワー (サイドメニュー)
       drawer: Drawer(
         child: ListView(
           padding: EdgeInsets.zero,
@@ -258,7 +259,6 @@ class _MainScreenState extends State<MainScreen> {
               ),
             ),
             
-            // ペット部屋
             ListTile(
               leading: const Icon(Icons.pets, color: Colors.orange),
               title: const Text('資産ペット部屋'),
@@ -269,7 +269,6 @@ class _MainScreenState extends State<MainScreen> {
               },
             ),
 
-            // 実績博物館
             ListTile(
               leading: const Icon(Icons.emoji_events, color: Colors.amber),
               title: const Text('実績博物館'),
@@ -280,7 +279,18 @@ class _MainScreenState extends State<MainScreen> {
               },
             ),
 
-            // データ出力 (CSV)
+            // ★追加: レシート読み込みへのショートカット
+            ListTile(
+              leading: const Icon(Icons.document_scanner, color: Colors.indigo),
+              title: const Text('レシート読み込み'),
+              subtitle: const Text('AIで文字を認識して記帳'),
+              onTap: () async {
+                Navigator.pop(context); 
+                await Navigator.of(context).push(MaterialPageRoute(builder: (context) => ReceiptScanPage(db: _db)));
+                _loadData();
+              },
+            ),
+
             ListTile(
               leading: const Icon(Icons.file_download, color: Colors.teal),
               title: const Text('データ出力'),
@@ -291,7 +301,6 @@ class _MainScreenState extends State<MainScreen> {
               },
             ),
 
-            // ★追加: データ取り込み (CSV)
             ListTile(
               leading: const Icon(Icons.file_upload, color: Colors.orange),
               title: const Text('データ取り込み'),
@@ -299,7 +308,7 @@ class _MainScreenState extends State<MainScreen> {
               onTap: () async {
                 Navigator.pop(context); 
                 await Navigator.of(context).push(MaterialPageRoute(builder: (context) => ImportPage(db: _db)));
-                _loadData(); // インポート後にデータをリロード
+                _loadData(); 
               },
             ),
 
@@ -358,31 +367,57 @@ class _MainScreenState extends State<MainScreen> {
           NavigationDestination(icon: Icon(Icons.timeline), label: '予測'),
         ],
       ),
+      
+      // ★修正: フロートボタンを2つ並べる
       floatingActionButton: (_selectedIndex == 0 || _selectedIndex == 1)
-          ? FloatingActionButton.extended(
-              onPressed: () async {
-                HapticFeedback.mediumImpact();
-                if (_accounts.isEmpty) return;
+          ? Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                // 1. レシート読み込みボタン (小さめ)
+                FloatingActionButton.small(
+                  heroTag: 'scan_fab', // エラー回避のためのタグ
+                  onPressed: () async {
+                    HapticFeedback.lightImpact();
+                    await Navigator.of(context).push(
+                      MaterialPageRoute(builder: (context) => ReceiptScanPage(db: _db)),
+                    );
+                    _loadData(); // 戻ってきたらデータを更新
+                  },
+                  backgroundColor: colorScheme.secondaryContainer,
+                  tooltip: 'レシート読み込み',
+                  child: const Icon(Icons.document_scanner),
+                ),
+                const SizedBox(height: 12),
                 
-                final result = await Navigator.of(context).push(
-                  MaterialPageRoute(builder: (context) => AddTransactionPage(accounts: _accounts, db: _db)),
-                );
-                
-                if (result != null && !result.containsKey('id')) {
-                  await _addTransaction(
-                    result['debitId'], 
-                    result['creditId'], 
-                    result['amount'],
-                    result['date'],
-                  );
-                  HapticFeedback.heavyImpact();
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('記帳しました！')));
-                  }
-                }
-              },
-              icon: const Icon(Icons.edit),
-              label: const Text('記帳'),
+                // 2. 記帳ボタン (通常サイズ)
+                FloatingActionButton.extended(
+                  heroTag: 'add_fab', // エラー回避のためのタグ
+                  onPressed: () async {
+                    HapticFeedback.mediumImpact();
+                    if (_accounts.isEmpty) return;
+                    
+                    final result = await Navigator.of(context).push(
+                      MaterialPageRoute(builder: (context) => AddTransactionPage(accounts: _accounts, db: _db)),
+                    );
+                    
+                    if (result != null && !result.containsKey('id')) {
+                      await _addTransaction(
+                        result['debitId'], 
+                        result['creditId'], 
+                        result['amount'],
+                        result['date'],
+                      );
+                      HapticFeedback.heavyImpact();
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('記帳しました！')));
+                      }
+                    }
+                  },
+                  icon: const Icon(Icons.edit),
+                  label: const Text('記帳'),
+                ),
+              ],
             )
           : null,
     );

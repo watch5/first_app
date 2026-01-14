@@ -67,3 +67,8 @@ android {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    // ↓ ★この1行を追加してください！
+    implementation("com.google.mlkit:text-recognition-japanese:16.0.1")
+}

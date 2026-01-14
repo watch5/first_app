@@ -6,13 +6,15 @@ import '../database.dart';
 class AddTransactionPage extends StatefulWidget {
   final List<Account> accounts;
   final MyDatabase db;
-  final Transaction? transaction; // 編集用（新規作成時はnull）
+  final Transaction? transaction; // 編集用 (IDあり)
+  final Transaction? initialData; // ★追加: レシート等の初期値用 (ID無視)
 
   const AddTransactionPage({
     super.key,
     required this.accounts,
     required this.db,
     this.transaction,
+    this.initialData,
   });
 
   @override
@@ -30,14 +32,22 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
   @override
   void initState() {
     super.initState();
+    // 編集モード
     if (widget.transaction != null) {
-      // 編集モード：既存データをセット
       final t = widget.transaction!;
       _amountController.text = t.amount.toString();
       _noteController.text = t.note ?? '';
       _date = t.date;
       _debitId = t.debitAccountId;
       _creditId = t.creditAccountId;
+    } 
+    // ★追加: レシート読み込み等からの初期値モード
+    else if (widget.initialData != null) {
+      final t = widget.initialData!;
+      _amountController.text = t.amount > 0 ? t.amount.toString() : '';
+      _noteController.text = t.note ?? '';
+      _date = t.date;
+      // 科目などは未定の状態にするか、推測ロジックを入れる
     }
   }
 
@@ -54,7 +64,6 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
     }
   }
 
-  // ★便利機能: 借方を選んだら、よく使う貸方を自動セット
   Future<void> _onDebitChanged(int? val) async {
     setState(() => _debitId = val);
     if (val != null && _creditId == null) {
@@ -78,6 +87,7 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
 
     // 戻り値としてデータを返す
     Navigator.pop(context, {
+      // transactionがある場合のみIDを返す（編集モード）
       if (widget.transaction != null) 'id': widget.transaction!.id,
       'debitId': _debitId,
       'creditId': _creditId,
@@ -93,13 +103,12 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
     
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.transaction == null ? '記帳' : '取引の編集'),
+        title: Text(widget.transaction != null ? '取引の編集' : '記帳'),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            // 日付選択
             ListTile(
               title: Text('日付: ${DateFormat('yyyy/MM/dd (E)', 'ja').format(_date)}'),
               trailing: const Icon(Icons.calendar_today),
@@ -109,7 +118,6 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
             ),
             const SizedBox(height: 16),
             
-            // 借方・貸方
             Row(
               children: [
                 Expanded(
@@ -135,7 +143,6 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
             ),
             const SizedBox(height: 16),
 
-            // 金額
             TextField(
               controller: _amountController,
               keyboardType: TextInputType.number,
@@ -149,7 +156,6 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
             ),
             const SizedBox(height: 16),
 
-            // メモ
             TextField(
               controller: _noteController,
               decoration: const InputDecoration(
@@ -160,7 +166,6 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
             ),
             const SizedBox(height: 32),
 
-            // 保存ボタン
             SizedBox(
               width: double.infinity,
               height: 50,
