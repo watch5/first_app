@@ -59,6 +59,8 @@ dependencies:
   file_picker: ^10.3.8
   google_mlkit_text_recognition: ^0.15.0
   image_picker: ^1.2.1
+  google_generative_ai: ^0.4.7
+  speech_to_text: ^7.3.0
 
 dev_dependencies:
   flutter_test:

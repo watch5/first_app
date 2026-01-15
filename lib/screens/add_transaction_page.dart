@@ -1,13 +1,15 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:google_generative_ai/google_generative_ai.dart';
 import 'package:intl/intl.dart';
 import '../database.dart';
 
 class AddTransactionPage extends StatefulWidget {
   final List<Account> accounts;
   final MyDatabase db;
-  final Transaction? transaction; // 編集用 (IDあり)
-  final Transaction? initialData; // ★追加: レシート等の初期値用 (ID無視)
+  final Transaction? transaction;
+  final Transaction? initialData;
 
   const AddTransactionPage({
     super.key,
@@ -22,17 +24,20 @@ class AddTransactionPage extends StatefulWidget {
 }
 
 class _AddTransactionPageState extends State<AddTransactionPage> {
+  // ★ここに取得したAPIキーを入れてください
+  final String _apiKey = 'AIzaSyAjn7KgHXI8tx6lHGgmNiD7EsaaxTGWaXA';
+
   final _amountController = TextEditingController();
   final _noteController = TextEditingController();
   
   DateTime _date = DateTime.now();
   int? _debitId;
   int? _creditId;
+  bool _isSuggesting = false;
 
   @override
   void initState() {
     super.initState();
-    // 編集モード
     if (widget.transaction != null) {
       final t = widget.transaction!;
       _amountController.text = t.amount.toString();
@@ -40,27 +45,13 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
       _date = t.date;
       _debitId = t.debitAccountId;
       _creditId = t.creditAccountId;
-    } 
-    // ★追加: レシート読み込み等からの初期値モード
-    else if (widget.initialData != null) {
+    } else if (widget.initialData != null) {
       final t = widget.initialData!;
       _amountController.text = t.amount > 0 ? t.amount.toString() : '';
       _noteController.text = t.note ?? '';
       _date = t.date;
-      // 科目などは未定の状態にするか、推測ロジックを入れる
-    }
-  }
-
-  Future<void> _selectDate() async {
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: _date,
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2030),
-      locale: const Locale('ja'),
-    );
-    if (picked != null) {
-      setState(() => _date = picked);
+      _debitId = t.debitAccountId > 0 ? t.debitAccountId : null;
+      _creditId = t.creditAccountId > 0 ? t.creditAccountId : null;
     }
   }
 
@@ -74,7 +65,68 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
     }
   }
 
-  void _save() {
+  Future<void> _suggestCategories() async {
+    final note = _noteController.text;
+    if (note.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('メモを入力してから押してください')));
+      return;
+    }
+
+    setState(() => _isSuggesting = true);
+    FocusScope.of(context).unfocus();
+
+    try {
+      final accounts = widget.accounts;
+      final accountListStr = accounts.map((a) => "${a.id}:${a.name}(${a.type})").join(", ");
+
+      // ★修正: 最新の安定版モデル 'gemini-2.5-flash' に変更
+      final model = GenerativeModel(model: 'gemini-2.5-flash', apiKey: _apiKey);
+      
+      final prompt = """
+        家計簿アプリの入力補助です。
+        メモ「$note」から、最も適切な「借方科目(debitId)」と「貸方科目(creditId)」を推測してください。
+        選択肢: $accountListStr
+        ルール: 不明なら-1。JSONキー: "debitId", "creditId"。JSONのみ出力。
+      """;
+
+      final response = await model.generateContent([Content.text(prompt)]);
+      final text = response.text;
+      if (text == null) throw Exception('Empty response');
+
+      final cleanJson = text.replaceAll(RegExp(r'```json|```'), '').trim();
+      final data = jsonDecode(cleanJson);
+
+      final suggestedDebit = data['debitId'] is int ? data['debitId'] : int.tryParse(data['debitId'].toString()) ?? -1;
+      final suggestedCredit = data['creditId'] is int ? data['creditId'] : int.tryParse(data['creditId'].toString()) ?? -1;
+
+      setState(() {
+        if (suggestedDebit > 0) _debitId = suggestedDebit;
+        if (suggestedCredit > 0) _creditId = suggestedCredit;
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('AIが科目を自動選択しました✨')));
+      }
+
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('AIエラー: $e')));
+    } finally {
+      setState(() => _isSuggesting = false);
+    }
+  }
+
+  Future<void> _selectDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _date,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2030),
+      locale: const Locale('ja'),
+    );
+    if (picked != null) setState(() => _date = picked);
+  }
+
+  Future<void> _save() async {
     final amount = int.tryParse(_amountController.text);
     if (amount == null || amount <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('金額を入力してください')));
@@ -85,26 +137,39 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
       return;
     }
 
-    // 戻り値としてデータを返す
-    Navigator.pop(context, {
-      // transactionがある場合のみIDを返す（編集モード）
-      if (widget.transaction != null) 'id': widget.transaction!.id,
-      'debitId': _debitId,
-      'creditId': _creditId,
-      'amount': amount,
-      'date': _date,
-      'note': _noteController.text,
-    });
+    try {
+      if (widget.transaction != null) {
+        await widget.db.updateTransaction(
+          widget.transaction!.id,
+          _debitId!,
+          _creditId!,
+          amount,
+          _date,
+          note: _noteController.text,
+        );
+      } else {
+        await widget.db.addTransaction(
+          _debitId!,
+          _creditId!,
+          amount,
+          _date,
+          note: _noteController.text,
+        );
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('保存しました')));
+        Navigator.pop(context, true);
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('エラー: $e')));
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    
     return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.transaction != null ? '取引の編集' : '記帳'),
-      ),
+      appBar: AppBar(title: Text(widget.transaction != null ? '取引の編集' : '記帳')),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -113,17 +178,46 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
               title: Text('日付: ${DateFormat('yyyy/MM/dd (E)', 'ja').format(_date)}'),
               trailing: const Icon(Icons.calendar_today),
               onTap: _selectDate,
-              tileColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+              tileColor: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
             ),
             const SizedBox(height: 16),
-            
+            TextField(
+              controller: _amountController,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(labelText: '金額 (円)', border: OutlineInputBorder(), prefixIcon: Icon(Icons.currency_yen)),
+              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _noteController,
+                    decoration: const InputDecoration(labelText: 'メモ (店名など)', border: OutlineInputBorder(), prefixIcon: Icon(Icons.note)),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton.filledTonal(
+                  onPressed: _isSuggesting ? null : _suggestCategories,
+                  icon: _isSuggesting 
+                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) 
+                    : const Icon(Icons.auto_awesome, color: Colors.orange),
+                  tooltip: 'AIで科目を推測',
+                ),
+              ],
+            ),
+            const Padding(
+              padding: EdgeInsets.only(left: 8.0, bottom: 16.0),
+              child: Align(alignment: Alignment.centerLeft, child: Text('メモを入れて✨を押すと、科目を自動で選びます', style: TextStyle(fontSize: 10, color: Colors.grey))),
+            ),
             Row(
               children: [
                 Expanded(
                   child: DropdownButtonFormField<int>(
                     value: _debitId,
-                    decoration: const InputDecoration(labelText: '借方 (何に？)', border: OutlineInputBorder()),
+                    decoration: const InputDecoration(labelText: '借方', border: OutlineInputBorder()),
                     items: widget.accounts.map((a) => DropdownMenuItem(value: a.id, child: Text(a.name))).toList(),
                     onChanged: _onDebitChanged,
                   ),
@@ -134,38 +228,14 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
                 Expanded(
                   child: DropdownButtonFormField<int>(
                     value: _creditId,
-                    decoration: const InputDecoration(labelText: '貸方 (どこから？)', border: OutlineInputBorder()),
+                    decoration: const InputDecoration(labelText: '貸方', border: OutlineInputBorder()),
                     items: widget.accounts.map((a) => DropdownMenuItem(value: a.id, child: Text(a.name))).toList(),
                     onChanged: (v) => setState(() => _creditId = v),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 16),
-
-            TextField(
-              controller: _amountController,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                labelText: '金額 (円)',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.currency_yen),
-              ),
-              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-            ),
-            const SizedBox(height: 16),
-
-            TextField(
-              controller: _noteController,
-              decoration: const InputDecoration(
-                labelText: 'メモ (任意)',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.note),
-              ),
-            ),
             const SizedBox(height: 32),
-
             SizedBox(
               width: double.infinity,
               height: 50,
