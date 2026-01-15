@@ -79,7 +79,6 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
       final accounts = widget.accounts;
       final accountListStr = accounts.map((a) => "${a.id}:${a.name}(${a.type})").join(", ");
 
-      // ★修正: 最新の安定版モデル 'gemini-2.5-flash' に変更
       final model = GenerativeModel(model: 'gemini-2.5-flash', apiKey: _apiKey);
       
       final prompt = """
@@ -126,6 +125,35 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
     if (picked != null) setState(() => _date = picked);
   }
 
+  // ★削除機能
+  Future<void> _delete() async {
+    if (widget.transaction == null) return;
+
+    final bool? confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('削除しますか？'),
+        content: const Text('この取引データを削除します。'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('キャンセル')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('削除'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      await widget.db.deleteTransaction(widget.transaction!.id);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('削除しました')));
+        Navigator.pop(context, true); // trueを返して親画面で更新
+      }
+    }
+  }
+
   Future<void> _save() async {
     final amount = int.tryParse(_amountController.text);
     if (amount == null || amount <= 0) {
@@ -169,7 +197,18 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(widget.transaction != null ? '取引の編集' : '記帳')),
+      appBar: AppBar(
+        title: Text(widget.transaction != null ? '取引の編集' : '記帳'),
+        actions: [
+          // ★編集モードの時だけ削除ボタンを表示
+          if (widget.transaction != null)
+            IconButton(
+              icon: const Icon(Icons.delete, color: Colors.red),
+              onPressed: _delete,
+              tooltip: '削除',
+            ),
+        ],
+      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(

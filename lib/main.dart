@@ -25,7 +25,8 @@ import 'screens/pet_room_page.dart';
 import 'screens/achievement_page.dart'; 
 import 'screens/export_page.dart'; 
 import 'screens/import_page.dart'; 
-import 'screens/receipt_scan_page.dart'; // ★追加: レシートスキャン用
+import 'screens/receipt_scan_page.dart'; 
+import 'screens/transaction_list_page.dart'; // ★追加: リスト表示用
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -112,6 +113,27 @@ class _MainScreenState extends State<MainScreen> {
       _accounts = accounts;
       _transactions = transactions.reversed.toList();
     });
+  }
+
+  // --- 取引操作 ---
+  Future<void> _deleteTransaction(int id) async {
+    await _db.deleteTransaction(id);
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('削除しました')));
+    _loadData();
+  }
+
+  Future<void> _editTransaction(Transaction t) async {
+    final result = await Navigator.of(context).push(
+      MaterialPageRoute(builder: (context) => AddTransactionPage(
+        accounts: _accounts, 
+        db: _db, 
+        transaction: t
+      )),
+    );
+    // 戻り値が true (保存または削除完了) ならリロード
+    if (result == true) {
+      _loadData();
+    }
   }
 
   Future<void> _checkNoMoneyDay() async {
@@ -218,22 +240,36 @@ class _MainScreenState extends State<MainScreen> {
     // (省略)
   }
 
-  Future<void> _addTransaction(int debitId, int creditId, int amount, DateTime date, {bool isAuto = false}) async {
-    await _db.addTransaction(debitId, creditId, amount, date, isAuto: isAuto);
-    await _loadData();
-  }
-
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     
     final List<Widget> screens = [
-      CalendarPage(db: _db), 
+      // 0: カレンダー (既存)
+      CalendarPage(db: _db),
+      
+      // 1: リスト表示 (★修正: ここにTransactionListScreenを入れる)
+      TransactionListScreen(
+        transactions: _transactions, 
+        accounts: _accounts, 
+        onDelete: _deleteTransaction, 
+        onEdit: _editTransaction
+      ),
+
+      // 2: 予算
       BudgetPage(transactions: _transactions, accounts: _accounts, onDataChanged: _loadData), 
+      
+      // 3: 損益
       PLPage(transactions: _transactions, accounts: _accounts),
+      
+      // 4: 資産 (B/S)
       BSPage(transactions: _transactions, accounts: _accounts, db: _db, onDataChanged: () => _loadData()), 
-      ForecastPage(db: _db),
     ];
+
+    // NavigationBarの項目とscreensのインデックスを合わせる必要があるため調整
+    // 現在の順番: Calendar, List(New), Budget, PL, BS
+    // BottomNavのラベル: カレンダー, リスト, 予算, 損益, 資産
+    // Forecast(予測)は一旦外すか、タブを増やすかですが、一旦「リスト」を見やすくするために5つにします。
 
     return Scaffold(
       appBar: AppBar(
@@ -260,6 +296,15 @@ class _MainScreenState extends State<MainScreen> {
             ),
             
             ListTile(
+              leading: const Icon(Icons.timeline, color: Colors.indigo), // 予測ページはここへ移動
+              title: const Text('資金繰り予測'),
+              onTap: () {
+                Navigator.pop(context); 
+                Navigator.of(context).push(MaterialPageRoute(builder: (context) => ForecastPage(db: _db)));
+              },
+            ),
+
+            ListTile(
               leading: const Icon(Icons.pets, color: Colors.orange),
               title: const Text('資産ペット部屋'),
               subtitle: const Text('減価償却を楽しく管理'),
@@ -279,22 +324,23 @@ class _MainScreenState extends State<MainScreen> {
               },
             ),
 
-            // ★追加: レシート読み込みへのショートカット
             ListTile(
               leading: const Icon(Icons.document_scanner, color: Colors.indigo),
               title: const Text('レシート読み込み'),
               subtitle: const Text('AIで文字を認識して記帳'),
               onTap: () async {
                 Navigator.pop(context); 
-                await Navigator.of(context).push(MaterialPageRoute(builder: (context) => ReceiptScanPage(db: _db)));
-                _loadData();
+                final result = await Navigator.of(context).push(MaterialPageRoute(builder: (context) => ReceiptScanPage(db: _db)));
+                // 保存が行われたらリロード
+                if (result == true) _loadData();
               },
             ),
 
+            const Divider(),
+            
             ListTile(
               leading: const Icon(Icons.file_download, color: Colors.teal),
               title: const Text('データ出力'),
-              subtitle: const Text('CSVファイルでバックアップ'),
               onTap: () {
                 Navigator.pop(context); 
                 Navigator.of(context).push(MaterialPageRoute(builder: (context) => ExportPage(db: _db)));
@@ -304,7 +350,6 @@ class _MainScreenState extends State<MainScreen> {
             ListTile(
               leading: const Icon(Icons.file_upload, color: Colors.orange),
               title: const Text('データ取り込み'),
-              subtitle: const Text('CSVファイルから復元'),
               onTap: () async {
                 Navigator.pop(context); 
                 await Navigator.of(context).push(MaterialPageRoute(builder: (context) => ImportPage(db: _db)));
@@ -353,6 +398,7 @@ class _MainScreenState extends State<MainScreen> {
           const AdBanner(), 
         ],
       ),
+      
       bottomNavigationBar: NavigationBar(
         selectedIndex: _selectedIndex,
         onDestinationSelected: (index) {
@@ -361,28 +407,26 @@ class _MainScreenState extends State<MainScreen> {
         },
         destinations: const [
           NavigationDestination(icon: Icon(Icons.calendar_month), label: 'カレンダー'),
+          NavigationDestination(icon: Icon(Icons.list), label: 'リスト'), // ★変更
           NavigationDestination(icon: Icon(Icons.pie_chart), label: '予算'),
           NavigationDestination(icon: Icon(Icons.show_chart), label: '損益'),
           NavigationDestination(icon: Icon(Icons.account_balance), label: '資産'),
-          NavigationDestination(icon: Icon(Icons.timeline), label: '予測'),
         ],
       ),
       
-      // ★修正: フロートボタンを2つ並べる
       floatingActionButton: (_selectedIndex == 0 || _selectedIndex == 1)
           ? Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                // 1. レシート読み込みボタン (小さめ)
                 FloatingActionButton.small(
-                  heroTag: 'scan_fab', // エラー回避のためのタグ
+                  heroTag: 'scan_fab', 
                   onPressed: () async {
                     HapticFeedback.lightImpact();
-                    await Navigator.of(context).push(
+                    final result = await Navigator.of(context).push(
                       MaterialPageRoute(builder: (context) => ReceiptScanPage(db: _db)),
                     );
-                    _loadData(); // 戻ってきたらデータを更新
+                    if (result == true) _loadData();
                   },
                   backgroundColor: colorScheme.secondaryContainer,
                   tooltip: 'レシート読み込み',
@@ -390,9 +434,8 @@ class _MainScreenState extends State<MainScreen> {
                 ),
                 const SizedBox(height: 12),
                 
-                // 2. 記帳ボタン (通常サイズ)
                 FloatingActionButton.extended(
-                  heroTag: 'add_fab', // エラー回避のためのタグ
+                  heroTag: 'add_fab', 
                   onPressed: () async {
                     HapticFeedback.mediumImpact();
                     if (_accounts.isEmpty) return;
@@ -401,14 +444,8 @@ class _MainScreenState extends State<MainScreen> {
                       MaterialPageRoute(builder: (context) => AddTransactionPage(accounts: _accounts, db: _db)),
                     );
                     
-                    if (result != null && !result.containsKey('id')) {
-                      await _addTransaction(
-                        result['debitId'], 
-                        result['creditId'], 
-                        result['amount'],
-                        result['date'],
-                      );
-                      HapticFeedback.heavyImpact();
+                    if (result == true) {
+                      _loadData();
                       if (context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('記帳しました！')));
                       }

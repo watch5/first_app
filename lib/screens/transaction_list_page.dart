@@ -22,16 +22,22 @@ class TransactionListScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (transactions.isEmpty) {
-      return const Center(
-        child: Text(
-          'まだ取引がありません\n右下のボタンから記帳してみましょう',
-          textAlign: TextAlign.center,
-          style: TextStyle(color: Colors.grey),
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.library_books, size: 64, color: Colors.grey.shade300),
+            const SizedBox(height: 16),
+            const Text(
+              'まだ取引がありません\n右下のボタンから記帳してみましょう',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.grey),
+            ),
+          ],
         ),
       );
     }
 
-    // ★修正: decimalDigits: 0 で小数点を確実に非表示にする
     final formatter = NumberFormat.currency(locale: 'ja', symbol: '¥', decimalDigits: 0);
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -50,8 +56,7 @@ class TransactionListScreen extends StatelessWidget {
 
       // ヘッダー（日付帯）
       groupSeparatorBuilder: (DateTime date) {
-        final dateStr = DateFormat('yyyy/MM/dd (E)', 'ja').format(date);
-        
+        final dateStr = DateFormat('MM/dd (E)', 'ja').format(date);
         final dayTotal = transactions
             .where((t) => 
                 t.date.year == date.year && 
@@ -60,21 +65,24 @@ class TransactionListScreen extends StatelessWidget {
             .fold(0, (sum, t) => sum + t.amount);
 
         return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          decoration: BoxDecoration(
-            color: isDark ? colorScheme.surfaceContainerHighest : colorScheme.surfaceVariant.withOpacity(0.5),
-            border: Border(bottom: BorderSide(color: colorScheme.outlineVariant.withOpacity(0.2))),
-          ),
+          margin: const EdgeInsets.fromLTRB(16, 16, 16, 8),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
                 dateStr, 
-                style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.onSurfaceVariant)
+                style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.secondary, fontSize: 14)
               ),
-              Text(
-                '計 ${formatter.format(dayTotal)}', // 記号付きフォーマッタを使用
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: colorScheme.onSurfaceVariant)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: colorScheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  '計 ${formatter.format(dayTotal)}',
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: colorScheme.onSurfaceVariant)
+                ),
               ),
             ],
           ),
@@ -86,122 +94,136 @@ class TransactionListScreen extends StatelessWidget {
         final debit = accounts.firstWhere((a) => a.id == t.debitAccountId, orElse: () => const Account(id: -1, name: '不明', type: '', costType: 'variable'));
         final credit = accounts.firstWhere((a) => a.id == t.creditAccountId, orElse: () => const Account(id: -1, name: '不明', type: '', costType: 'variable'));
 
-        // ★視認性向上: 取引タイプに応じた色とアイコン
+        // 取引タイプに応じた色設定
         Color amountColor;
         IconData icon;
         Color iconBgColor;
 
         if (debit.type == 'expense') {
-          // 支出
           amountColor = Colors.redAccent;
-          icon = Icons.shopping_cart_outlined;
-          iconBgColor = Colors.redAccent.withOpacity(0.1);
+          icon = Icons.shopping_bag_outlined;
+          iconBgColor = Colors.red.withValues(alpha: 0.1);
         } else if (credit.type == 'income') {
-          // 収入
           amountColor = Colors.green;
           icon = Icons.savings_outlined;
-          iconBgColor = Colors.green.withOpacity(0.1);
+          iconBgColor = Colors.green.withValues(alpha: 0.1);
         } else {
-          // 振替など
           amountColor = isDark ? Colors.white70 : Colors.black87;
           icon = Icons.swap_horiz;
-          iconBgColor = isDark ? Colors.grey.withOpacity(0.2) : Colors.grey.withOpacity(0.1);
+          iconBgColor = Colors.grey.withValues(alpha: 0.1);
         }
 
-        return Material(
-          color: colorScheme.surface,
-          child: InkWell(
-            onTap: () => onEdit(t),
-            onLongPress: () {
-               HapticFeedback.heavyImpact();
-               _showDeleteDialog(context, t, formatter);
-            },
-            child: Container(
-              decoration: BoxDecoration(
-                border: Border(bottom: BorderSide(color: colorScheme.outlineVariant.withOpacity(0.2))),
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: Row(
-                children: [
-                  // アイコン
-                  Container(
-                    width: 40, 
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: iconBgColor,
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(icon, color: amountColor, size: 20),
+        // ★スワイプ削除機能 (Dismissible)
+        return Dismissible(
+          key: Key(t.id.toString()),
+          direction: DismissDirection.endToStart,
+          background: Container(
+            alignment: Alignment.centerRight,
+            padding: const EdgeInsets.only(right: 20),
+            color: Colors.redAccent,
+            child: const Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                Text('削除', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                SizedBox(width: 8),
+                Icon(Icons.delete, color: Colors.white),
+              ],
+            ),
+          ),
+          confirmDismiss: (direction) async {
+            return await showDialog(
+              context: context,
+              builder: (ctx) => AlertDialog(
+                title: const Text('削除しますか？'),
+                content: const Text('この操作は元に戻せません。'),
+                actions: [
+                  TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('キャンセル')),
+                  FilledButton(
+                    onPressed: () => Navigator.pop(ctx, true),
+                    style: FilledButton.styleFrom(backgroundColor: Colors.red),
+                    child: const Text('削除'),
                   ),
-                  const SizedBox(width: 16),
+                ],
+              ),
+            );
+          },
+          onDismissed: (direction) {
+            onDelete(t.id);
+          },
+          child: Card(
+            margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            elevation: 0,
+            color: colorScheme.surface,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.4)),
+            ),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: () => onEdit(t),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Row(
+                  children: [
+                    // アイコン
+                    Container(
+                      width: 44, 
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: iconBgColor,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(icon, color: amountColor, size: 22),
+                    ),
+                    const SizedBox(width: 12),
 
-                  // 中央情報（科目名など）
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Text(debit.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                            if (t.isAuto == 1) ...[
-                              const SizedBox(width: 6),
-                              Icon(Icons.autorenew, size: 14, color: colorScheme.primary.withOpacity(0.7)),
+                    // 中央情報
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Text(debit.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                              if (t.isAuto == 1) ...[
+                                const SizedBox(width: 6),
+                                Icon(Icons.autorenew, size: 14, color: colorScheme.primary.withValues(alpha: 0.7)),
+                              ],
                             ],
-                          ],
-                        ),
-                        const SizedBox(height: 2),
-                        Row(
-                          children: [
-                            Text('from ', style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
-                            Text(credit.name, style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
-                          ],
+                          ),
+                          Text(
+                            '${credit.name}より${t.note != null && t.note!.isNotEmpty ? " / ${t.note}" : ""}', 
+                            style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    // 金額
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          formatter.format(t.amount),
+                          style: TextStyle(
+                            fontSize: 16, 
+                            fontWeight: FontWeight.bold,
+                            color: amountColor,
+                            fontFeatures: const [FontFeature.tabularFigures()],
+                          ),
                         ),
                       ],
                     ),
-                  ),
-
-                  // 金額
-                  Text(
-                    formatter.format(t.amount),
-                    style: TextStyle(
-                      fontSize: 17, 
-                      fontWeight: FontWeight.bold,
-                      color: amountColor,
-                      fontFeatures: const [FontFeature.tabularFigures()], // 数字の幅を揃える
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Icon(Icons.chevron_right, size: 18, color: Colors.grey.withOpacity(0.3)),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
         );
       },
       
-      useStickyGroupSeparators: true, 
-      floatingHeader: true,
-    );
-  }
-
-  void _showDeleteDialog(BuildContext context, Transaction t, NumberFormat formatter) {
-    final dateStr = DateFormat('yyyy/MM/dd').format(t.date);
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('削除しますか？'),
-        content: Text('$dateStr の取引\n${formatter.format(t.amount)} を削除します。'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('キャンセル')),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              onDelete(t.id);
-            },
-            child: const Text('削除', style: TextStyle(color: Colors.red)),
-          ),
-        ],
-      ),
+      useStickyGroupSeparators: false, // フローティングヘッダーをオフにしてスッキリさせる
     );
   }
 }
